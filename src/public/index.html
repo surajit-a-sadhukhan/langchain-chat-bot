@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LangChain Chat + Upload</title>
+  <style>
+    body { font-family: Inter, system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 24px; color: #111; background: #f7f8fc; }
+    h1, h2 { color: #1d2563; }
+    section { background: #fff; border: 1px solid #d7dbe9; border-radius: 16px; padding: 20px; margin-bottom: 20px; }
+    textarea, input, button { width: 100%; font-family: inherit; margin-top: 8px; }
+    textarea { min-height: 120px; resize: vertical; padding: 12px; border: 1px solid #cbd2e0; border-radius: 12px; }
+    input { padding: 12px; border: 1px solid #cbd2e0; border-radius: 12px; }
+    button { background: #4f46e5; color: #fff; border: none; padding: 12px 16px; border-radius: 12px; cursor: pointer; margin-top: 12px; }
+    button:hover { opacity: 0.95; }
+    .small { width: auto; display: inline-block; }
+    .row { display: grid; gap: 16px; grid-template-columns: 1fr; }
+    .doc-meta { font-size: 0.95rem; color: #4b5563; margin-top: 4px; }
+    .message-box { background: #eef2ff; padding: 14px; border-radius: 12px; white-space: pre-wrap; margin-top: 12px; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 10px; }
+    .status { margin-top: 10px; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <h1>LangChain Chat + Document Upload</h1>
+  <section>
+    <h2>Chat with the model</h2>
+    <textarea id="chatMessage" placeholder="Type a chat message..."></textarea>
+    <button id="sendChat">Send Chat</button>
+    <div id="chatResponse" class="message-box" hidden></div>
+  </section>
+
+  <section>
+    <h2>Upload a document</h2>
+    <div class="row">
+      <label>
+        Title
+        <input id="docTitle" placeholder="Document title" />
+      </label>
+      <label>
+        Source / Tags
+        <input id="docSource" placeholder="e.g. sales-doc, support-guide" />
+      </label>
+      <label>
+        Paste text
+        <textarea id="docText" placeholder="Paste document text or choose a file"></textarea>
+      </label>
+      <label>
+        Or choose a .txt file
+        <input id="docFile" type="file" accept=".txt" />
+      </label>
+    </div>
+    <button id="uploadButton">Upload Document</button>
+    <div id="uploadStatus" class="status"></div>
+  </section>
+
+  <section>
+    <h2>Uploaded documents</h2>
+    <button id="refreshDocs" class="small">Refresh list</button>
+    <ul id="documents"></ul>
+  </section>
+
+  <script>
+    const chatMessage = document.getElementById('chatMessage');
+    const sendChat = document.getElementById('sendChat');
+    const chatResponse = document.getElementById('chatResponse');
+    const docTitle = document.getElementById('docTitle');
+    const docSource = document.getElementById('docSource');
+    const docText = document.getElementById('docText');
+    const docFile = document.getElementById('docFile');
+    const uploadButton = document.getElementById('uploadButton');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const refreshDocs = document.getElementById('refreshDocs');
+    const documentsList = document.getElementById('documents');
+
+    async function fetchDocuments() {
+      const resp = await fetch('/documents');
+      const data = await resp.json();
+      documentsList.innerHTML = '';
+      if (!data.documents.length) {
+        documentsList.innerHTML = '<li>No documents uploaded yet.</li>';
+        return;
+      }
+      data.documents.forEach(doc => {
+        const item = document.createElement('li');
+        item.innerHTML = `<strong>${doc.title}</strong><div class="doc-meta">Source: ${doc.source} · ${doc.length} chars</div>`;
+        documentsList.appendChild(item);
+      });
+    }
+
+    async function readFileText(file) {
+      if (!file) return '';
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.toString());
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(file, 'UTF-8');
+      });
+    }
+
+    docFile.addEventListener('change', async () => {
+      const file = docFile.files?.[0];
+      if (!file) return;
+      uploadStatus.textContent = 'Reading file...';
+      try {
+        const text = await readFileText(file);
+        docText.value = text;
+        uploadStatus.textContent = `Loaded file ${file.name}.`; 
+      } catch (err) {
+        uploadStatus.textContent = 'Failed to read file.';
+      }
+    });
+
+    uploadButton.addEventListener('click', async () => {
+      const title = docTitle.value.trim();
+      const source = docSource.value.trim() || 'manual';
+      const text = docText.value.trim();
+
+      if (!title || !text) {
+        uploadStatus.textContent = 'Please provide both a title and document text.';
+        return;
+      }
+
+      uploadButton.disabled = true;
+      uploadStatus.textContent = 'Uploading document...';
+
+      try {
+        const resp = await fetch('/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, source, text }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) throw new Error(result.error || 'Upload failed');
+        uploadStatus.textContent = `Uploaded ${result.document.title} successfully.`;
+        docText.value = '';
+        docFile.value = '';
+        await fetchDocuments();
+      } catch (err) {
+        uploadStatus.textContent = err.message || 'Upload failed.';
+      } finally {
+        uploadButton.disabled = false;
+      }
+    });
+
+    sendChat.addEventListener('click', async () => {
+      const message = chatMessage.value.trim();
+      if (!message) {
+        chatResponse.hidden = false;
+        chatResponse.textContent = 'Please type a chat message first.';
+        return;
+      }
+
+      sendChat.disabled = true;
+      chatResponse.hidden = false;
+      chatResponse.textContent = 'Sending...';
+      try {
+        const resp = await fetch('/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Chat failed');
+        chatResponse.textContent = data.response;
+      } catch (err) {
+        chatResponse.textContent = err.message || 'Chat failed.';
+      } finally {
+        sendChat.disabled = false;
+      }
+    });
+
+    refreshDocs.addEventListener('click', fetchDocuments);
+    fetchDocuments();
+  </script>
+</body>
+</html>
