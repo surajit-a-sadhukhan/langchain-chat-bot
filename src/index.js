@@ -94,6 +94,11 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "chat.html"));
 });
 
+// Serve the documents UI page (keeps the API route at /documents intact)
+app.get("/documents-ui", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "documents.html"));
+});
+
 app.get("/documents", async (req, res) => {
   const docs = await documentsCollection
     .find({}, { projection: { title: 1, source: 1, text: 1, uploadedAt: 1 } })
