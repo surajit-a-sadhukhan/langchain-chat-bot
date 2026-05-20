@@ -8,6 +8,7 @@ import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 dotenv.config();
 
 const openAiKey = process.env.OPEN_KEY;
+const openAiEndpoint = process.env.OPENAI_ENDPOINT || "https://api.openai.com";
 const mongoUri = process.env.MONGODB_URI;
 const mongoDbName = process.env.MONGODB_DB || "chatbot";
 const mongoCollection = process.env.MONGODB_COLLECTION || "documents";
@@ -36,6 +37,9 @@ function buildOpenAIModel() {
     apiKey: openAiKey,
     model: "gpt-4o-mini",
     temperature: 0.7,
+    configuration: {
+      baseURL: openAiEndpoint,
+    },
   });
 }
 
@@ -47,6 +51,9 @@ function buildEmbeddings() {
   return new OpenAIEmbeddings({
     openAIApiKey: openAiKey,
     modelName: "text-embedding-3-small",
+    configuration: {
+      baseURL: openAiEndpoint,
+    },
   });
 }
 
