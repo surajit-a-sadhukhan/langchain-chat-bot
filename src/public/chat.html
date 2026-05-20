@@ -104,6 +104,15 @@
         // replace 'Thinking...' with actual answer
         if(lastAssistant) lastAssistant.textContent = data.response || JSON.stringify(data);
         showSources(data.retrievedDocuments || []);
+        // Show save indicator only for technical queries
+        if(data.saved) {
+          const saveIndicator = document.createElement('div');
+          saveIndicator.style.fontSize = '11px';
+          saveIndicator.style.color = '#10b981';
+          saveIndicator.style.marginTop = '4px';
+          saveIndicator.textContent = '✓ Technical query saved to database';
+          if(lastAssistant) lastAssistant.appendChild(saveIndicator);
+        }
       }catch(err){
         if(lastAssistant) lastAssistant.textContent = err.message || 'Error';
       }finally{ sendBtn.disabled = false }

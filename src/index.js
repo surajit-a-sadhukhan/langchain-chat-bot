@@ -13,6 +13,7 @@ const mongoUri = process.env.MONGODB_URI;
 const mongoDbName = process.env.MONGODB_DB || "chatbot";
 const mongoCollection = process.env.MONGODB_COLLECTION || "documents";
 const mongoQueriesCollection = process.env.MONGODB_QUERIES_COLLECTION || "queries";
+const mongoChatCollection = process.env.MONGODB_CHAT_COLLECTION || "chats";
 
 if (!openAiKey) {
   throw new Error("Missing OPEN_KEY in .env");
@@ -33,6 +34,7 @@ const openAiModel = buildOpenAIModel();
 const embeddings = buildEmbeddings();
 let documentsCollection;
 let queriesCollection;
+let chatCollection;
 
 function buildOpenAIModel() {
   return new ChatOpenAI({
@@ -65,10 +67,13 @@ async function initMongo() {
   const db = client.db(mongoDbName);
   documentsCollection = db.collection(mongoCollection);
   queriesCollection = db.collection(mongoQueriesCollection);
+  chatCollection = db.collection(mongoChatCollection);
   await documentsCollection.createIndex({ title: "text", source: "text", text: "text" });
   await documentsCollection.createIndex({ uploadedAt: 1 });
   await queriesCollection.createIndex({ title: "text", description: "text", message: "text" });
   await queriesCollection.createIndex({ createdAt: 1 });
+  await chatCollection.createIndex({ message: "text", response: "text" });
+  await chatCollection.createIndex({ createdAt: 1 });
 }
 
 function cosineSimilarity(a, b) {
@@ -83,6 +88,25 @@ function cosineSimilarity(a, b) {
   }
   if (normA === 0 || normB === 0) return 0;
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function isTechnicalQuestion(message) {
+  const technicalKeywords = [
+    'react', 'vue', 'angular', 'javascript', 'typescript', 'python', 'java', 'c++', 'node',
+    'api', 'rest', 'graphql', 'database', 'sql', 'mongodb', 'postgres', 'mysql',
+    'ai', 'machine learning', 'deep learning', 'nlp', 'neural', 'model', 'training',
+    'docker', 'kubernetes', 'aws', 'azure', 'gcp', 'cloud',
+    'html', 'css', 'webpack', 'babel', 'npm', 'yarn', 'git',
+    'algorithm', 'data structure', 'framework', 'library', 'function', 'class',
+    'bug', 'error', 'debug', 'issue', 'fix', 'optimize', 'performance',
+    'code', 'programming', 'developer', 'backend', 'frontend', 'fullstack',
+    'authentication', 'authorization', 'security', 'encryption',
+    'testing', 'jest', 'mocha', 'unit test', 'integration test',
+    'deployment', 'ci/cd', 'jenkins', 'github actions'
+  ];
+  
+  const lowerMessage = message.toLowerCase();
+  return technicalKeywords.some(keyword => lowerMessage.includes(keyword));
 }
 
 async function getNearestDocuments(query, limit = 3) {
@@ -236,28 +260,69 @@ app.patch("/queries/:id/status", async (req, res) => {
 });
 
 app.post("/chat", async (req, res) => {
-  const { message } = req.body;
-  if (!message) {
-    return res.status(400).json({ error: "A message is required in the request body." });
-  }
-
-  try {
-    const relevantDocs = await getNearestDocuments(message, 3);
-    console.log("Relevant documents:", relevantDocs);
-    const context = relevantDocs
-      .map((doc, index) => `Document ${index + 1} [${doc.title} | ${doc.source}]:\n${doc.text}`)
-      .join("\n\n");
-    const prompt = context
+  constOnly store technical queries in MongoDB
+    const isTechnical = isTechnicalQuestion(message);
+    if (isTechnical) {
+      const chatDoc = {
+        message,
+        response: result,
+        retrievedDocuments: relevantDocs.map((doc) => ({ title: doc.title, source: doc.source, score: doc.score })),
+        createdAt: new Date().toISOString(),
+        provider: "openai",
+        model: "gpt-4o-mini",
+        isTechnical: true,
+      };
+      await chatCollection.insertOne(chatDoc);
+      console.log("Technical query saved to database:", message);
+    } else {
+      console.log("Non-technical query, not saved:", message);
+    }
+    
+    return res.json({ response: result, retrievedDocuments: relevantDocs.map((doc) => ({ title: doc.title, source: doc.source, score: doc.score })), saved: isTechnical
       ? `Use the following documents to help answer the question:\n\n${context}\n\nQuestion: ${message}`
       : message;
     const response = await invokeLLM(prompt);
     const result =
       response?.text ??
       (typeof response?.content === "string" ? response.content : response);
+    
+    // Store the chat message and response in MongoDB
+    const chatDoc = {
+      message,
+      response: result,
+      retrievedDocuments: relevantDocs.map((doc) => ({ title: doc.title, source: doc.source, score: doc.score })),
+      createdAt: new Date().toISOString(),
+      provider: "openai",
+      model: "gpt-4o-mini",
+    };
+    await chatCollection.insertOne(chatDoc);
+    
     return res.json({ response: result, retrievedDocuments: relevantDocs.map((doc) => ({ title: doc.title, source: doc.source, score: doc.score })) });
   } catch (error) {
     console.error("Chat error:", error);
     return res.status(500).json({ error: "Failed to generate a response." });
+  }
+});
+
+app.get("/chats", async (req, res) => {
+  try {
+    const chats = await chatCollection
+      .find({}, { projection: { message: 1, response: 1, createdAt: 1, retrievedDocuments: 1 } })
+      .sort({ createdAt: -1 })
+      .toArray();
+    return res.json({ 
+      chats: chats.map((chat, index) => ({
+        id: chat._id.toString(),
+        number: index + 1,
+        message: chat.message,
+        response: chat.response,
+        retrievedDocuments: chat.retrievedDocuments || [],
+        createdAt: chat.createdAt,
+      })) 
+    });
+  } catch (error) {
+    console.error("Fetch chats error:", error);
+    return res.status(500).json({ error: "Failed to fetch chat history." });
   }
 });
 
