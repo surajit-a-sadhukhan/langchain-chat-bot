@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Support Query — LangChain</title>
+  <style>
+    :root{--bg:#f5f7fb;--card:#ffffff;--muted:#6b7280;--primary:#3743ff;--user:#0ea5a4}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;color:#0f172a;background:var(--bg)}
+    header{background:linear-gradient(90deg,#3b82f6 0%,#7c3aed 100%);color:#fff;padding:20px 28px}
+    header h1{margin:0;font-size:20px;letter-spacing:-0.2px}
+    .toolbar{display:flex;gap:12px;flex-wrap:wrap}
+    .toolbar a{color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600}
+    .container{max-width:920px;margin:24px auto;padding:0 16px}
+    .card{background:var(--card);border-radius:12px;padding:24px;box-shadow:0 6px 20px rgba(16,24,40,0.06)}
+    label{display:block;margin-bottom:14px;font-size:14px;color:#475569}
+    input,textarea{width:100%;padding:12px;border-radius:12px;border:1px solid #e6edf6;font-size:14px}
+    textarea{resize:vertical;min-height:120px}
+    button{background:var(--primary);color:#fff;border:none;padding:12px 18px;border-radius:12px;cursor:pointer;font-size:15px}
+    .status{margin-top:16px;font-size:14px;color:#334155}
+    .response-card{margin-top:18px;padding:16px;border-radius:12px;border:1px solid #e6edf6;background:#f8fbff}
+    .response-card pre{white-space:pre-wrap;margin:0;font-family:inherit;font-size:14px;line-height:1.6}
+    .small{font-size:13px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <header>
+    <div style="display:flex;justify-content:space-between;align-items:center;max-width:920px;margin:0 auto">
+      <h1>Support Mode</h1>
+      <nav class="toolbar">
+        <a href="/chat.html">AI Chat</a>
+        <a href="/documents.html">Documents</a>
+        <a href="/queries.html">Query List</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="card">
+      <h2>Submit a query</h2>
+      <p class="small">Enter a title, description, and your question. The query will be saved in MongoDB and answered by the language model.</p>
+      <form id="supportForm">
+        <label>Title <input id="title" autocomplete="off" /></label>
+        <label>Description <textarea id="description"></textarea></label>
+        <label>Question <textarea id="message"></textarea></label>
+        <button type="submit">Submit Query</button>
+      </form>
+      <div id="status" class="status"></div>
+      <div id="response" class="response-card" hidden>
+        <strong>Assistant response:</strong>
+        <pre id="responseText"></pre>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById('supportForm');
+    const titleInput = document.getElementById('title');
+    const descriptionInput = document.getElementById('description');
+    const messageInput = document.getElementById('message');
+    const statusEl = document.getElementById('status');
+    const responseSection = document.getElementById('response');
+    const responseText = document.getElementById('responseText');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      statusEl.textContent = '';
+      responseSection.hidden = true;
+      const title = titleInput.value.trim();
+      const description = descriptionInput.value.trim();
+      const message = messageInput.value.trim();
+      if (!title || !description || !message) {
+        statusEl.textContent = 'Please fill in title, description, and question.';
+        return;
+      }
+
+      statusEl.textContent = 'Saving query and generating answer...';
+      const payload = { title, description, message };
+      try {
+        const resp = await fetch('/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Unable to submit query');
+
+        statusEl.textContent = `Query saved as #${data.query.id}. Status: ${data.query.status}`;
+        responseText.textContent = data.query.response || 'No answer returned.';
+        responseSection.hidden = false;
+        titleInput.value = '';
+        descriptionInput.value = '';
+        messageInput.value = '';
+      } catch (error) {
+        statusEl.textContent = error.message || 'Failed to submit query.';
+      }
+    });
+  </script>
+</body>
+</html>

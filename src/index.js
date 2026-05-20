@@ -2,7 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 
 dotenv.config();
@@ -12,6 +12,7 @@ const openAiEndpoint = process.env.OPENAI_ENDPOINT || "https://api.openai.com";
 const mongoUri = process.env.MONGODB_URI;
 const mongoDbName = process.env.MONGODB_DB || "chatbot";
 const mongoCollection = process.env.MONGODB_COLLECTION || "documents";
+const mongoQueriesCollection = process.env.MONGODB_QUERIES_COLLECTION || "queries";
 
 if (!openAiKey) {
   throw new Error("Missing OPEN_KEY in .env");
@@ -31,6 +32,7 @@ app.use(express.static(path.join(__dirname, "public")));
 const openAiModel = buildOpenAIModel();
 const embeddings = buildEmbeddings();
 let documentsCollection;
+let queriesCollection;
 
 function buildOpenAIModel() {
   return new ChatOpenAI({
@@ -62,8 +64,11 @@ async function initMongo() {
   await client.connect();
   const db = client.db(mongoDbName);
   documentsCollection = db.collection(mongoCollection);
+  queriesCollection = db.collection(mongoQueriesCollection);
   await documentsCollection.createIndex({ title: "text", source: "text", text: "text" });
   await documentsCollection.createIndex({ uploadedAt: 1 });
+  await queriesCollection.createIndex({ title: "text", description: "text", message: "text" });
+  await queriesCollection.createIndex({ createdAt: 1 });
 }
 
 function cosineSimilarity(a, b) {
@@ -143,6 +148,90 @@ app.post("/upload", async (req, res) => {
   } catch (error) {
     console.error("Upload error:", error);
     return res.status(500).json({ error: "Failed to upload document." });
+  }
+});
+
+app.post("/query", async (req, res) => {
+  const { title, description, message } = req.body;
+  if (!title || !description || !message) {
+    return res.status(400).json({ error: "title, description and message are required" });
+  }
+
+  try {
+    const prompt = `Query title: ${title}\nDescription: ${description}\nQuestion: ${message}`;
+    const response = await invokeLLM(prompt);
+    const result = response?.text ?? (typeof response?.content === "string" ? response.content : response);
+
+    const queryDoc = {
+      title,
+      description,
+      message,
+      response: result,
+      status: "open",
+      createdAt: new Date().toISOString(),
+      provider: "openai",
+    };
+    const insertResult = await queriesCollection.insertOne(queryDoc);
+
+    return res.json({
+      success: true,
+      query: {
+        id: insertResult.insertedId.toString(),
+        title,
+        description,
+        status: queryDoc.status,
+        response: result,
+      },
+    });
+  } catch (error) {
+    console.error("Query error:", error);
+    return res.status(500).json({ error: "Failed to create query." });
+  }
+});
+
+app.get("/queries", async (req, res) => {
+  try {
+    const queries = await queriesCollection
+      .find({}, { projection: { title: 1, description: 1, status: 1, createdAt: 1 } })
+      .sort({ createdAt: -1 })
+      .toArray();
+    return res.json({ queries: queries.map((query, index) => ({
+      id: query._id.toString(),
+      number: index + 1,
+      title: query.title,
+      description: query.description,
+      status: query.status,
+      createdAt: query.createdAt,
+    })) });
+  } catch (error) {
+    console.error("Fetch queries error:", error);
+    return res.status(500).json({ error: "Failed to fetch queries." });
+  }
+});
+
+app.patch("/queries/:id/status", async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).json({ error: "Invalid query id." });
+  }
+  if (!status || !["open", "pending"].includes(status)) {
+    return res.status(400).json({ error: "Status must be open or pending." });
+  }
+
+  try {
+    const result = await queriesCollection.findOneAndUpdate(
+      { _id: new ObjectId(id) },
+      { $set: { status } },
+      { returnDocument: "after" }
+    );
+    if (!result.value) {
+      return res.status(404).json({ error: "Query not found." });
+    }
+    return res.json({ success: true, query: { id, status: result.value.status } });
+  } catch (error) {
+    console.error("Update query status error:", error);
+    return res.status(500).json({ error: "Failed to update query status." });
   }
 });
 
