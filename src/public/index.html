@@ -1,178 +1,128 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LangChain Chat + Upload</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat — LangChain</title>
   <style>
-    body { font-family: Inter, system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 24px; color: #111; background: #f7f8fc; }
-    h1, h2 { color: #1d2563; }
-    section { background: #fff; border: 1px solid #d7dbe9; border-radius: 16px; padding: 20px; margin-bottom: 20px; }
-    textarea, input, button { width: 100%; font-family: inherit; margin-top: 8px; }
-    textarea { min-height: 120px; resize: vertical; padding: 12px; border: 1px solid #cbd2e0; border-radius: 12px; }
-    input { padding: 12px; border: 1px solid #cbd2e0; border-radius: 12px; }
-    button { background: #4f46e5; color: #fff; border: none; padding: 12px 16px; border-radius: 12px; cursor: pointer; margin-top: 12px; }
-    button:hover { opacity: 0.95; }
-    .small { width: auto; display: inline-block; }
-    .row { display: grid; gap: 16px; grid-template-columns: 1fr; }
-    .doc-meta { font-size: 0.95rem; color: #4b5563; margin-top: 4px; }
-    .message-box { background: #eef2ff; padding: 14px; border-radius: 12px; white-space: pre-wrap; margin-top: 12px; }
-    ul { list-style: none; padding: 0; margin: 0; }
-    li { background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 10px; }
-    .status { margin-top: 10px; font-size: 0.95rem; }
+    :root{--bg:#f5f7fb;--card:#ffffff;--muted:#6b7280;--primary:#3743ff;--user:#0ea5a4}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;color:#0f172a;background:var(--bg);}
+    header{background:linear-gradient(90deg,#3b82f6 0%,#7c3aed 100%);color:#fff;padding:20px 28px}
+    header h1{margin:0;font-size:20px;letter-spacing:-0.2px}
+    .container{max-width:960px;margin:24px auto;padding:0 16px}
+    .chat-card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 6px 20px rgba(16,24,40,0.06)}
+    .messages{height:420px;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+    .msg{max-width:78%;padding:12px 14px;border-radius:12px;line-height:1.45;white-space:pre-wrap}
+    .msg.assistant{background:#eef2ff;color:#0f172a;align-self:flex-start;border-top-left-radius:4px}
+    .msg.user{background:#e6fffa;color:#064e3b;align-self:flex-end;border-top-right-radius:4px;text-align:right}
+    .meta{font-size:12px;color:var(--muted);margin-top:6px}
+    .input-row{display:flex;gap:12px;margin-top:12px}
+    .input-row input{flex:1;padding:12px;border-radius:10px;border:1px solid #e6edf6}
+    .input-row button{background:var(--primary);color:#fff;border:none;padding:0 18px;border-radius:10px;cursor:pointer}
+    .sources{margin-top:12px;font-size:13px;color:var(--muted);}
+    .source-item{background:#fafafa;border:1px solid #eef2ff;padding:10px;border-radius:8px;margin-bottom:8px}
+    .toolbar{display:flex;gap:8px;align-items:center}
+    .small{font-size:13px;color:var(--muted)}
+    footer{max-width:960px;margin:18px auto;padding:0 16px;color:var(--muted);font-size:13px}
   </style>
 </head>
 <body>
-  <h1>LangChain Chat + Document Upload</h1>
-  <section>
-    <h2>Chat with the model</h2>
-    <textarea id="chatMessage" placeholder="Type a chat message..."></textarea>
-    <button id="sendChat">Send Chat</button>
-    <div id="chatResponse" class="message-box" hidden></div>
-  </section>
-
-  <section>
-    <h2>Upload a document</h2>
-    <div class="row">
-      <label>
-        Title
-        <input id="docTitle" placeholder="Document title" />
-      </label>
-      <label>
-        Source / Tags
-        <input id="docSource" placeholder="e.g. sales-doc, support-guide" />
-      </label>
-      <label>
-        Paste text
-        <textarea id="docText" placeholder="Paste document text or choose a file"></textarea>
-      </label>
-      <label>
-        Or choose a .txt file
-        <input id="docFile" type="file" accept=".txt" />
-      </label>
+  <header>
+    <div style="display:flex;justify-content:space-between;align-items:center;max-width:960px;margin:0 auto">
+      <h1>LangChain — Professional Chat</h1>
+      <nav class="toolbar">
+        <a href="/chat.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">AI Chat</a>
+        <a href="/documents.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">Documents</a>
+        <a href="/support.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">Support</a>
+        <a href="/queries.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">Queries</a>
+        <a href="/appointments.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">Appointments</a>
+      </nav>
     </div>
-    <button id="uploadButton">Upload Document</button>
-    <div id="uploadStatus" class="status"></div>
-  </section>
+  </header>
 
-  <section>
-    <h2>Uploaded documents</h2>
-    <button id="refreshDocs" class="small">Refresh list</button>
-    <ul id="documents"></ul>
-  </section>
+  <main class="container">
+    <div class="chat-card">
+      <div class="messages" id="messages" aria-live="polite"></div>
+
+      <div class="meta">Tip: include context or ask follow-up questions</div>
+
+      <div class="input-row">
+        <input id="messageInput" placeholder="Ask anything..." autocomplete="off" />
+        <button id="sendBtn">Send</button>
+      </div>
+
+      <div class="sources" id="sources" hidden>
+        <strong>Sources:</strong>
+        <div id="sourcesList"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer>Running OpenAI-powered assistant · <a href="/" style="color:inherit;text-decoration:underline">Home</a></footer>
 
   <script>
-    const chatMessage = document.getElementById('chatMessage');
-    const sendChat = document.getElementById('sendChat');
-    const chatResponse = document.getElementById('chatResponse');
-    const docTitle = document.getElementById('docTitle');
-    const docSource = document.getElementById('docSource');
-    const docText = document.getElementById('docText');
-    const docFile = document.getElementById('docFile');
-    const uploadButton = document.getElementById('uploadButton');
-    const uploadStatus = document.getElementById('uploadStatus');
-    const refreshDocs = document.getElementById('refreshDocs');
-    const documentsList = document.getElementById('documents');
+    const messagesEl = document.getElementById('messages');
+    const input = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const sourcesEl = document.getElementById('sources');
+    const sourcesList = document.getElementById('sourcesList');
 
-    async function fetchDocuments() {
-      const resp = await fetch('/documents');
-      const data = await resp.json();
-      documentsList.innerHTML = '';
-      if (!data.documents.length) {
-        documentsList.innerHTML = '<li>No documents uploaded yet.</li>';
-        return;
-      }
-      data.documents.forEach(doc => {
-        const item = document.createElement('li');
-        item.innerHTML = `<strong>${doc.title}</strong><div class="doc-meta">Source: ${doc.source} · ${doc.length} chars</div>`;
-        documentsList.appendChild(item);
-      });
+    function appendMessage(text, cls) {
+      const wrap = document.createElement('div');
+      wrap.className = 'msg ' + cls;
+      wrap.textContent = text;
+      messagesEl.appendChild(wrap);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
-    async function readFileText(file) {
-      if (!file) return '';
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.toString());
-        reader.onerror = () => reject(reader.error);
-        reader.readAsText(file, 'UTF-8');
+    function showSources(docs){
+      sourcesList.innerHTML = '';
+      if(!docs || !docs.length){ sourcesEl.hidden = true; return }
+      docs.forEach(d=>{
+        const div = document.createElement('div');
+        div.className = 'source-item';
+        div.innerHTML = `<strong>${escapeHtml(d.title)}</strong><div style="font-size:12px;color:#475569">${escapeHtml(d.source)} · score: ${Number(d.score).toFixed(3)}</div>`;
+        sourcesList.appendChild(div);
       });
+      sourcesEl.hidden = false;
     }
 
-    docFile.addEventListener('change', async () => {
-      const file = docFile.files?.[0];
-      if (!file) return;
-      uploadStatus.textContent = 'Reading file...';
-      try {
-        const text = await readFileText(file);
-        docText.value = text;
-        uploadStatus.textContent = `Loaded file ${file.name}.`; 
-      } catch (err) {
-        uploadStatus.textContent = 'Failed to read file.';
-      }
-    });
+    function escapeHtml(s){ return (s+'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;') }
 
-    uploadButton.addEventListener('click', async () => {
-      const title = docTitle.value.trim();
-      const source = docSource.value.trim() || 'manual';
-      const text = docText.value.trim();
+    sendBtn.addEventListener('click', sendMessage);
+    input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); sendMessage(); } });
 
-      if (!title || !text) {
-        uploadStatus.textContent = 'Please provide both a title and document text.';
-        return;
-      }
+    async function sendMessage(){
+      const text = input.value.trim();
+      if(!text) return;
+      appendMessage(text,'user');
+      input.value = '';
+      sendBtn.disabled = true;
 
-      uploadButton.disabled = true;
-      uploadStatus.textContent = 'Uploading document...';
+      appendMessage('Thinking...','assistant');
+      const lastAssistant = messagesEl.querySelector('.msg.assistant:last-child');
 
-      try {
-        const resp = await fetch('/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, source, text }),
-        });
-        const result = await resp.json();
-        if (!resp.ok) throw new Error(result.error || 'Upload failed');
-        uploadStatus.textContent = `Uploaded ${result.document.title} successfully.`;
-        docText.value = '';
-        docFile.value = '';
-        await fetchDocuments();
-      } catch (err) {
-        uploadStatus.textContent = err.message || 'Upload failed.';
-      } finally {
-        uploadButton.disabled = false;
-      }
-    });
-
-    sendChat.addEventListener('click', async () => {
-      const message = chatMessage.value.trim();
-      if (!message) {
-        chatResponse.hidden = false;
-        chatResponse.textContent = 'Please type a chat message first.';
-        return;
-      }
-
-      sendChat.disabled = true;
-      chatResponse.hidden = false;
-      chatResponse.textContent = 'Sending...';
-      try {
-        const resp = await fetch('/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message }),
-        });
+      try{
+        const resp = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ message: text }) });
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Chat failed');
-        chatResponse.textContent = data.response;
-      } catch (err) {
-        chatResponse.textContent = err.message || 'Chat failed.';
-      } finally {
-        sendChat.disabled = false;
-      }
-    });
-
-    refreshDocs.addEventListener('click', fetchDocuments);
-    fetchDocuments();
+        if(!resp.ok) throw new Error(data.error || 'Chat failed');
+        // replace 'Thinking...' with actual answer
+        if(lastAssistant) lastAssistant.textContent = data.response || JSON.stringify(data);
+        showSources(data.retrievedDocuments || []);
+        // Show save indicator only for technical queries
+        if(data.saved) {
+          const saveIndicator = document.createElement('div');
+          saveIndicator.style.fontSize = '11px';
+          saveIndicator.style.color = '#10b981';
+          saveIndicator.style.marginTop = '4px';
+          saveIndicator.textContent = '✓ Technical query saved to database';
+          if(lastAssistant) lastAssistant.appendChild(saveIndicator);
+        }
+      }catch(err){
+        if(lastAssistant) lastAssistant.textContent = err.message || 'Error';
+      }finally{ sendBtn.disabled = false }
+    }
   </script>
 </body>
 </html>

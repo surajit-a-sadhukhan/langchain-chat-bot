@@ -17,6 +17,7 @@ const mongoDbName = process.env.MONGODB_DB || "chatbot";
 const mongoCollection = process.env.MONGODB_COLLECTION || "documents";
 const mongoQueriesCollection = process.env.MONGODB_QUERIES_COLLECTION || "queries";
 const mongoChatCollection = process.env.MONGODB_CHAT_COLLECTION || "chats";
+const mongoAppointmentsCollection = process.env.MONGODB_APPOINTMENTS_COLLECTION || "appointments";
 
 if (!openAiKey) {
   throw new Error("Missing OPEN_KEY in .env");
@@ -29,18 +30,18 @@ if (!mongoUri) {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
 
-const openAiModel = buildOpenAIModel();
-const embeddings = buildEmbeddings();
-let documentsCollection;
-let queriesCollection;
-let chatCollection;
-
-function buildOpenAIModel() {
-  return new ChatOpenAI({
+const buildOpenAIModel = () =>
+  new ChatOpenAI({
     apiKey: openAiKey,
     model: openAiModelName,
     temperature: 0.7,
@@ -48,38 +49,19 @@ function buildOpenAIModel() {
       baseURL: openAiBaseUrl,
     },
   });
-}
 
-async function invokeLLM(prompt) {
-  return await openAiModel.invoke(prompt);
-}
+const invokeLLM = async (prompt) => await openAiModel.invoke(prompt);
 
-function buildEmbeddings() {
-  return new OpenAIEmbeddings({
+const buildEmbeddings = () =>
+  new OpenAIEmbeddings({
     openAIApiKey: openAiKey,
     modelName: openAiEmbeddingModel,
     configuration: {
       baseURL: openAiBaseUrl,
     },
   });
-}
 
-async function initMongo() {
-  const client = new MongoClient(mongoUri);
-  await client.connect();
-  const db = client.db(mongoDbName);
-  documentsCollection = db.collection(mongoCollection);
-  queriesCollection = db.collection(mongoQueriesCollection);
-  chatCollection = db.collection(mongoChatCollection);
-  await documentsCollection.createIndex({ title: "text", source: "text", text: "text" });
-  await documentsCollection.createIndex({ uploadedAt: 1 });
-  await queriesCollection.createIndex({ title: "text", description: "text", message: "text" });
-  await queriesCollection.createIndex({ createdAt: 1 });
-  await chatCollection.createIndex({ message: "text", response: "text" });
-  await chatCollection.createIndex({ createdAt: 1 });
-}
-
-function cosineSimilarity(a, b) {
+const cosineSimilarity = (a, b) => {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return 0;
   let dot = 0;
   let normA = 0;
@@ -91,28 +73,88 @@ function cosineSimilarity(a, b) {
   }
   if (normA === 0 || normB === 0) return 0;
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
+};
 
-function isTechnicalQuestion(message) {
-  const technicalKeywords = [
-    'react', 'vue', 'angular', 'javascript', 'typescript', 'python', 'java', 'c++', 'node',
-    'api', 'rest', 'graphql', 'database', 'sql', 'mongodb', 'postgres', 'mysql',
-    'ai', 'machine learning', 'deep learning', 'nlp', 'neural', 'model', 'training',
-    'docker', 'kubernetes', 'aws', 'azure', 'gcp', 'cloud',
-    'html', 'css', 'webpack', 'babel', 'npm', 'yarn', 'git',
-    'algorithm', 'data structure', 'framework', 'library', 'function', 'class',
-    'bug', 'error', 'debug', 'issue', 'fix', 'optimize', 'performance',
-    'code', 'programming', 'developer', 'backend', 'frontend', 'fullstack',
-    'authentication', 'authorization', 'security', 'encryption',
-    'testing', 'jest', 'mocha', 'unit test', 'integration test',
-    'deployment', 'ci/cd', 'jenkins', 'github actions'
-  ];
-  
-  const lowerMessage = message.toLowerCase();
-  return technicalKeywords.some(keyword => lowerMessage.includes(keyword));
-}
+const parseLlmJsonResponse = (text) => {
+  console.log("Parsing LLM response for JSON:", text);
+  if (!text || typeof text !== "string") {
+    throw new Error("LLM response is empty or invalid.");
+  }
 
-async function getNearestDocuments(query, limit = 3) {
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch (firstError) {
+    const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]);
+      } catch {
+        // fall through
+      }
+    }
+    throw new Error("Unable to parse JSON from LLM response.");
+  }
+};
+
+const scheduleLocalAppointment = (details) => {
+  const appointmentDetails = {
+    clientName: null,
+    query: null,
+    appointmentDateTime: null,
+    ...(typeof details === "object" && details !== null ? details : { info: details }),
+  };
+
+  const appointment = {
+    id: `appt_${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    clientName: appointmentDetails.clientName || "Unknown Client",
+    query: appointmentDetails.query || "",
+    appointmentDateTime: appointmentDetails.appointmentDateTime || new Date().toISOString(),
+    details: appointmentDetails,
+    status: "scheduled",
+    confirmation: "Appointment has been set.",
+  };
+  console.log("Local appointment triggered:", appointment);
+  return appointment;
+};
+
+const evaluateLlmDecision = (rawResponse, message) => {
+  console.log("Raw LLM response:", rawResponse);
+  console.log("Original message:", message);
+  let decision;
+  try {
+    decision = parseLlmJsonResponse(rawResponse);
+  } catch (error) {
+    console.error("Unable to parse LLM decision JSON:", error, "rawResponse:", rawResponse);
+    return {
+      technical: false,
+      appointment: false,
+      reason: "Could not parse JSON from LLM response.",
+      response: rawResponse,
+      appointmentResult: null,
+    };
+  }
+
+  const appointmentResult = decision.appointment
+    ? scheduleLocalAppointment(decision.details || {
+        clientName: null,
+        query: message,
+        appointmentDateTime: new Date().toISOString(),
+      })
+    : null;
+
+  return {
+    technical: Boolean(decision.technical),
+    appointment: Boolean(decision.appointment),
+    reason: typeof decision.reason === "string" ? decision.reason : "",
+    response: typeof decision.response === "string" ? decision.response : rawResponse,
+    details: decision.details || null,
+    appointmentResult,
+  };
+};
+
+const getNearestDocuments = async (query, limit = 3) => {
   if (!documentsCollection) {
     return [];
   }
@@ -127,7 +169,32 @@ async function getNearestDocuments(query, limit = 3) {
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
-}
+};
+
+const openAiModel = buildOpenAIModel();
+const embeddings = buildEmbeddings();
+let documentsCollection;
+let queriesCollection;
+let chatCollection;
+let appointmentsCollection;
+
+const initMongo = async () => {
+  const client = new MongoClient(mongoUri);
+  await client.connect();
+  const db = client.db(mongoDbName);
+  documentsCollection = db.collection(mongoCollection);
+  queriesCollection = db.collection(mongoQueriesCollection);
+  chatCollection = db.collection(mongoChatCollection);
+  appointmentsCollection = db.collection(mongoAppointmentsCollection);
+  await documentsCollection.createIndex({ title: "text", source: "text", text: "text" });
+  await documentsCollection.createIndex({ uploadedAt: 1 });
+  await queriesCollection.createIndex({ title: "text", description: "text", message: "text" });
+  await queriesCollection.createIndex({ createdAt: 1 });
+  await chatCollection.createIndex({ message: "text", response: "text" });
+  await chatCollection.createIndex({ createdAt: 1 });
+  await appointmentsCollection.createIndex({ clientName: "text", query: "text", appointmentDateTime: 1 });
+  await appointmentsCollection.createIndex({ createdAt: 1 });
+};
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "chat.html"));
@@ -236,6 +303,32 @@ app.get("/queries", async (req, res) => {
   }
 });
 
+app.get("/appointments", async (req, res) => {
+  try {
+    const appointments = await appointmentsCollection
+      .find({}, { projection: { clientName: 1, query: 1, appointmentDateTime: 1, createdAt: 1, status: 1, confirmation: 1 } })
+      .sort({ createdAt: -1 })
+      .toArray();
+    return res.json({ appointments: appointments.map((appointment, index) => ({
+      id: appointment._id.toString(),
+      number: index + 1,
+      clientName: appointment.clientName,
+      query: appointment.query,
+      appointmentDateTime: appointment.appointmentDateTime,
+      createdAt: appointment.createdAt,
+      status: appointment.status,
+      confirmation: appointment.confirmation,
+    })) });
+  } catch (error) {
+    console.error("Fetch appointments error:", error);
+    return res.status(500).json({ error: "Failed to fetch appointments." });
+  }
+});
+
+app.get("/appointments-ui", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "appointments.html"));
+});
+
 app.patch("/queries/:id/status", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -270,6 +363,7 @@ app.post("/chat", async (req, res) => {
 
   try {
     const relevantDocs = await getNearestDocuments(message, 3);
+    console.log("Relevant documents found:", relevantDocs);
     const context = relevantDocs
       .map(
         (doc, index) =>
@@ -277,19 +371,35 @@ app.post("/chat", async (req, res) => {
       )
       .join("\n\n");
 
-    const prompt = relevantDocs.length
-      ? `Use the following documents to help answer the question:\n\n${context}\n\nQuestion: ${message}`
-      : message;
+    const systemInstruction = `You are a helpful assistant that receives a user question and decides two things:
+1. Whether the question is technical.
+2. Whether it should trigger a local appointment action.
 
+If appointment is true, include appointment details with clientName, query, and appointmentDateTime.
+
+Respond only in valid JSON with these keys:
+- technical: true or false
+- appointment: true or false
+- reason: a short explanation
+- response: a natural-language answer to the user
+- details: object with clientName, query, appointmentDateTime
+`;
+
+    const prompt = relevantDocs.length
+      ? `${systemInstruction}\n\nContext:\n${context}\n\nQuestion: ${message}`
+      : `${systemInstruction}\n\nQuestion: ${message}`;
+console.log("Constructed prompt for LLM:", prompt);
     const response = await invokeLLM(prompt);
-    const result =
+    console.log("LLM raw response:", response);
+    const rawResponse =
       response?.text ??
       (typeof response?.content === "string" ? response.content : response);
 
-    const isTechnical = isTechnicalQuestion(message);
+    const decision = evaluateLlmDecision(rawResponse, message);
+
     const chatDoc = {
       message,
-      response: result,
+      response: decision.response,
       retrievedDocuments: relevantDocs.map((doc) => ({
         title: doc.title,
         source: doc.source,
@@ -298,20 +408,46 @@ app.post("/chat", async (req, res) => {
       createdAt: new Date().toISOString(),
       provider: "openai",
       model: openAiModelName,
-      isTechnical,
+      technical: decision.technical,
+      appointment: decision.appointment,
+      appointmentResult: decision.appointmentResult,
+      llmReason: decision.reason,
     };
 
-    if (isTechnical) {
+    if (decision.technical) {
       await chatCollection.insertOne(chatDoc);
-      console.log("Technical query saved to database:", message);
+      console.log("Technical question saved to database:", message);
     } else {
-      console.log("Non-technical query, not saved:", message);
+      console.log("Non-technical question, not saved:", message);
+    }
+
+    let savedAppointment = null;
+    if (decision.appointment && appointmentsCollection) {
+      const appointmentDoc = {
+        clientName: decision.details?.clientName || "Unknown Client",
+        query: decision.details?.query || message,
+        appointmentDateTime: decision.details?.appointmentDateTime || new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        status: "scheduled",
+        confirmation: "Appointment has been set.",
+        llmReason: decision.reason,
+      };
+      const appointmentResult = await appointmentsCollection.insertOne(appointmentDoc);
+      savedAppointment = {
+        ...appointmentDoc,
+        id: appointmentResult.insertedId.toString(),
+      };
+      console.log("Appointment saved to database:", savedAppointment);
     }
 
     return res.json({
-      response: result,
+      response: decision.response,
       retrievedDocuments: chatDoc.retrievedDocuments,
-      saved: isTechnical,
+      technical: decision.technical,
+      appointment: decision.appointment,
+      appointmentResult: decision.appointmentResult,
+      savedAppointment,
+      reason: decision.reason,
     });
   } catch (error) {
     console.error("Chat error:", error);
@@ -341,7 +477,7 @@ app.get("/chats", async (req, res) => {
   }
 });
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3001;
 
 initMongo()
   .then(() => {
