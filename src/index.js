@@ -15,7 +15,6 @@ const openAiEmbeddingModel = process.env.OPENAI_EMBEDDING_MODEL || "text-embeddi
 const mongoUri = process.env.MONGODB_URI;
 const mongoDbName = process.env.MONGODB_DB || "chatbot";
 const mongoCollection = process.env.MONGODB_COLLECTION || "documents";
-const mongoQueriesCollection = process.env.MONGODB_QUERIES_COLLECTION || "queries";
 const mongoChatCollection = process.env.MONGODB_CHAT_COLLECTION || "chats";
 const mongoAppointmentsCollection = process.env.MONGODB_APPOINTMENTS_COLLECTION || "appointments";
 
@@ -100,6 +99,8 @@ const parseLlmJsonResponse = (text) => {
 const scheduleLocalAppointment = (details) => {
   const appointmentDetails = {
     clientName: null,
+    email: null,
+    phone: null,
     query: null,
     appointmentDateTime: null,
     ...(typeof details === "object" && details !== null ? details : { info: details }),
@@ -109,6 +110,8 @@ const scheduleLocalAppointment = (details) => {
     id: `appt_${Date.now()}`,
     createdAt: new Date().toISOString(),
     clientName: appointmentDetails.clientName || "Unknown Client",
+    email: appointmentDetails.email || "",
+    phone: appointmentDetails.phone || "",
     query: appointmentDetails.query || "",
     appointmentDateTime: appointmentDetails.appointmentDateTime || new Date().toISOString(),
     details: appointmentDetails,
@@ -139,6 +142,8 @@ const evaluateLlmDecision = (rawResponse, message) => {
   const appointmentResult = decision.appointment
     ? scheduleLocalAppointment(decision.details || {
         clientName: null,
+        email: null,
+        phone: null,
         query: message,
         appointmentDateTime: new Date().toISOString(),
       })
@@ -174,7 +179,6 @@ const getNearestDocuments = async (query, limit = 3) => {
 const openAiModel = buildOpenAIModel();
 const embeddings = buildEmbeddings();
 let documentsCollection;
-let queriesCollection;
 let chatCollection;
 let appointmentsCollection;
 
@@ -183,13 +187,10 @@ const initMongo = async () => {
   await client.connect();
   const db = client.db(mongoDbName);
   documentsCollection = db.collection(mongoCollection);
-  queriesCollection = db.collection(mongoQueriesCollection);
   chatCollection = db.collection(mongoChatCollection);
   appointmentsCollection = db.collection(mongoAppointmentsCollection);
   await documentsCollection.createIndex({ title: "text", source: "text", text: "text" });
   await documentsCollection.createIndex({ uploadedAt: 1 });
-  await queriesCollection.createIndex({ title: "text", description: "text", message: "text" });
-  await queriesCollection.createIndex({ createdAt: 1 });
   await chatCollection.createIndex({ message: "text", response: "text" });
   await chatCollection.createIndex({ createdAt: 1 });
   await appointmentsCollection.createIndex({ clientName: "text", query: "text", appointmentDateTime: 1 });
@@ -245,74 +246,18 @@ app.post("/upload", async (req, res) => {
   }
 });
 
-app.post("/query", async (req, res) => {
-  const { title, description, message } = req.body;
-  if (!title || !description || !message) {
-    return res.status(400).json({ error: "title, description and message are required" });
-  }
-
-  try {
-    const prompt = `Query title: ${title}\nDescription: ${description}\nQuestion: ${message}`;
-    const response = await invokeLLM(prompt);
-    const result = response?.text ?? (typeof response?.content === "string" ? response.content : response);
-
-    const queryDoc = {
-      title,
-      description,
-      message,
-      response: result,
-      status: "open",
-      createdAt: new Date().toISOString(),
-      provider: "openai",
-    };
-    const insertResult = await queriesCollection.insertOne(queryDoc);
-
-    return res.json({
-      success: true,
-      query: {
-        id: insertResult.insertedId.toString(),
-        title,
-        description,
-        status: queryDoc.status,
-        response: result,
-      },
-    });
-  } catch (error) {
-    console.error("Query error:", error);
-    return res.status(500).json({ error: "Failed to create query." });
-  }
-});
-
-app.get("/queries", async (req, res) => {
-  try {
-    const queries = await queriesCollection
-      .find({}, { projection: { title: 1, description: 1, status: 1, createdAt: 1 } })
-      .sort({ createdAt: -1 })
-      .toArray();
-    return res.json({ queries: queries.map((query, index) => ({
-      id: query._id.toString(),
-      number: index + 1,
-      title: query.title,
-      description: query.description,
-      status: query.status,
-      createdAt: query.createdAt,
-    })) });
-  } catch (error) {
-    console.error("Fetch queries error:", error);
-    return res.status(500).json({ error: "Failed to fetch queries." });
-  }
-});
-
 app.get("/appointments", async (req, res) => {
   try {
     const appointments = await appointmentsCollection
-      .find({}, { projection: { clientName: 1, query: 1, appointmentDateTime: 1, createdAt: 1, status: 1, confirmation: 1 } })
+      .find({}, { projection: { clientName: 1, email: 1, phone: 1, query: 1, appointmentDateTime: 1, createdAt: 1, status: 1, confirmation: 1 } })
       .sort({ createdAt: -1 })
       .toArray();
     return res.json({ appointments: appointments.map((appointment, index) => ({
       id: appointment._id.toString(),
       number: index + 1,
       clientName: appointment.clientName,
+      email: appointment.email,
+      phone: appointment.phone,
       query: appointment.query,
       appointmentDateTime: appointment.appointmentDateTime,
       createdAt: appointment.createdAt,
@@ -329,34 +274,8 @@ app.get("/appointments-ui", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "appointments.html"));
 });
 
-app.patch("/queries/:id/status", async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-  if (!ObjectId.isValid(id)) {
-    return res.status(400).json({ error: "Invalid query id." });
-  }
-  if (!status || !["open", "pending"].includes(status)) {
-    return res.status(400).json({ error: "Status must be open or pending." });
-  }
-
-  try {
-    const result = await queriesCollection.findOneAndUpdate(
-      { _id: new ObjectId(id) },
-      { $set: { status } },
-      { returnDocument: "after" }
-    );
-    if (!result.value) {
-      return res.status(404).json({ error: "Query not found." });
-    }
-    return res.json({ success: true, query: { id, status: result.value.status } });
-  } catch (error) {
-    console.error("Update query status error:", error);
-    return res.status(500).json({ error: "Failed to update query status." });
-  }
-});
-
 app.post("/chat", async (req, res) => {
-  const { message } = req.body;
+  const { message, history } = req.body;
   if (!message) {
     return res.status(400).json({ error: "Message is required." });
   }
@@ -375,19 +294,33 @@ app.post("/chat", async (req, res) => {
 1. Whether the question is technical.
 2. Whether it should trigger a local appointment action.
 
-If appointment is true, include appointment details with clientName, query, and appointmentDateTime.
+To schedule an appointment, you MUST gather all the following details:
+- Client Name (clientName)
+- Email Address (email)
+- Phone Number (phone)
+- Preferred Appointment Date & Time (appointmentDateTime) - parse this into a valid ISO 8601 string or readable date-time string if possible.
+- Topic / Reason for appointment (query)
+
+Rules for scheduling an appointment:
+- Check the conversation history and the current question to see which details have been provided.
+- If the user wants to book/schedule an appointment, but any of the required details (Name, Email, Phone, Date/Time, or Topic) are missing, you MUST NOT trigger the appointment. Set "appointment" to false, and in the "response", politely ask the user for the missing details.
+- Once (and only when) ALL the required details are gathered, set "appointment" to true and populate the "details" object with the collected values. Set a friendly confirmation message in "response".
 
 Respond only in valid JSON with these keys:
 - technical: true or false
 - appointment: true or false
-- reason: a short explanation
-- response: a natural-language answer to the user
-- details: object with clientName, query, appointmentDateTime
+- reason: a short explanation of your decision
+- response: a natural-language answer to the user (e.g. answering a question, asking for missing appointment details, or confirming the scheduled appointment)
+- details: object with keys: clientName, email, phone, appointmentDateTime, query
 `;
 
+    const formattedHistory = Array.isArray(history) && history.length > 0
+      ? history.map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`).join("\n")
+      : "";
+
     const prompt = relevantDocs.length
-      ? `${systemInstruction}\n\nContext:\n${context}\n\nQuestion: ${message}`
-      : `${systemInstruction}\n\nQuestion: ${message}`;
+      ? `${systemInstruction}\n\nContext:\n${context}\n\n${formattedHistory ? `Conversation History:\n${formattedHistory}\n\n` : ""}Question: ${message}`
+      : `${systemInstruction}\n\n${formattedHistory ? `Conversation History:\n${formattedHistory}\n\n` : ""}Question: ${message}`;
 console.log("Constructed prompt for LLM:", prompt);
     const response = await invokeLLM(prompt);
     console.log("LLM raw response:", response);
@@ -425,6 +358,8 @@ console.log("Constructed prompt for LLM:", prompt);
     if (decision.appointment && appointmentsCollection) {
       const appointmentDoc = {
         clientName: decision.details?.clientName || "Unknown Client",
+        email: decision.details?.email || "",
+        phone: decision.details?.phone || "",
         query: decision.details?.query || message,
         appointmentDateTime: decision.details?.appointmentDateTime || new Date().toISOString(),
         createdAt: new Date().toISOString(),

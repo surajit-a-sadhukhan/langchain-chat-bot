@@ -234,8 +234,6 @@
       <nav class="toolbar">
         <a href="/chat.html">AI Chat</a>
         <a href="/documents.html">Documents</a>
-        <a href="/support.html">Support</a>
-        <a href="/queries.html">Queries</a>
         <a href="/appointments.html">Appointments</a>
       </nav>
     </div>
@@ -294,7 +292,9 @@
         <tr>
           <th>#</th>
           <th>Client</th>
-          <th>Query</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Topic/Notes</th>
           <th>Appointment</th>
           <th>Status</th>
           <th>Created</th>
@@ -308,7 +308,9 @@
         row.innerHTML = `
           <td data-label="#">${appointment.number}</td>
           <td data-label="Client">${escapeHtml(appointment.clientName)}</td>
-          <td data-label="Query">${escapeHtml(appointment.query)}</td>
+          <td data-label="Email">${escapeHtml(appointment.email || '—')}</td>
+          <td data-label="Phone">${escapeHtml(appointment.phone || '—')}</td>
+          <td data-label="Topic/Notes">${escapeHtml(appointment.query)}</td>
           <td data-label="Appointment">${escapeHtml(new Date(appointment.appointmentDateTime).toLocaleString())}</td>
           <td data-label="Status"><span class="status-pill">${escapeHtml(appointment.status)}</span></td>
           <td data-label="Created">${escapeHtml(new Date(appointment.createdAt).toLocaleString())}</td>
