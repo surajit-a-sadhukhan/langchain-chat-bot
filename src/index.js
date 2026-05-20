@@ -9,6 +9,9 @@ dotenv.config();
 
 const openAiKey = process.env.OPEN_KEY;
 const openAiEndpoint = process.env.OPENAI_ENDPOINT || "https://api.openai.com";
+const openAiBaseUrl = openAiEndpoint.replace(/\/$/, "") + "/v1";
+const openAiModelName = process.env.OPENAI_MODEL || "gpt-3.5-turbo";
+const openAiEmbeddingModel = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small";
 const mongoUri = process.env.MONGODB_URI;
 const mongoDbName = process.env.MONGODB_DB || "chatbot";
 const mongoCollection = process.env.MONGODB_COLLECTION || "documents";
@@ -39,10 +42,10 @@ let chatCollection;
 function buildOpenAIModel() {
   return new ChatOpenAI({
     apiKey: openAiKey,
-    model: "gpt-4o-mini",
+    model: openAiModelName,
     temperature: 0.7,
     configuration: {
-      baseURL: openAiEndpoint,
+      baseURL: openAiBaseUrl,
     },
   });
 }
@@ -54,9 +57,9 @@ async function invokeLLM(prompt) {
 function buildEmbeddings() {
   return new OpenAIEmbeddings({
     openAIApiKey: openAiKey,
-    modelName: "text-embedding-3-small",
+    modelName: openAiEmbeddingModel,
     configuration: {
-      baseURL: openAiEndpoint,
+      baseURL: openAiBaseUrl,
     },
   });
 }
@@ -260,44 +263,56 @@ app.patch("/queries/:id/status", async (req, res) => {
 });
 
 app.post("/chat", async (req, res) => {
-  constOnly store technical queries in MongoDB
+  const { message } = req.body;
+  if (!message) {
+    return res.status(400).json({ error: "Message is required." });
+  }
+
+  try {
+    const relevantDocs = await getNearestDocuments(message, 3);
+    const context = relevantDocs
+      .map(
+        (doc, index) =>
+          `Document ${index + 1}: ${doc.title}\nSource: ${doc.source}\nText: ${doc.text}`
+      )
+      .join("\n\n");
+
+    const prompt = relevantDocs.length
+      ? `Use the following documents to help answer the question:\n\n${context}\n\nQuestion: ${message}`
+      : message;
+
+    const response = await invokeLLM(prompt);
+    const result =
+      response?.text ??
+      (typeof response?.content === "string" ? response.content : response);
+
     const isTechnical = isTechnicalQuestion(message);
+    const chatDoc = {
+      message,
+      response: result,
+      retrievedDocuments: relevantDocs.map((doc) => ({
+        title: doc.title,
+        source: doc.source,
+        score: doc.score,
+      })),
+      createdAt: new Date().toISOString(),
+      provider: "openai",
+      model: openAiModelName,
+      isTechnical,
+    };
+
     if (isTechnical) {
-      const chatDoc = {
-        message,
-        response: result,
-        retrievedDocuments: relevantDocs.map((doc) => ({ title: doc.title, source: doc.source, score: doc.score })),
-        createdAt: new Date().toISOString(),
-        provider: "openai",
-        model: "gpt-4o-mini",
-        isTechnical: true,
-      };
       await chatCollection.insertOne(chatDoc);
       console.log("Technical query saved to database:", message);
     } else {
       console.log("Non-technical query, not saved:", message);
     }
-    
-    return res.json({ response: result, retrievedDocuments: relevantDocs.map((doc) => ({ title: doc.title, source: doc.source, score: doc.score })), saved: isTechnical
-      ? `Use the following documents to help answer the question:\n\n${context}\n\nQuestion: ${message}`
-      : message;
-    const response = await invokeLLM(prompt);
-    const result =
-      response?.text ??
-      (typeof response?.content === "string" ? response.content : response);
-    
-    // Store the chat message and response in MongoDB
-    const chatDoc = {
-      message,
+
+    return res.json({
       response: result,
-      retrievedDocuments: relevantDocs.map((doc) => ({ title: doc.title, source: doc.source, score: doc.score })),
-      createdAt: new Date().toISOString(),
-      provider: "openai",
-      model: "gpt-4o-mini",
-    };
-    await chatCollection.insertOne(chatDoc);
-    
-    return res.json({ response: result, retrievedDocuments: relevantDocs.map((doc) => ({ title: doc.title, source: doc.source, score: doc.score })) });
+      retrievedDocuments: chatDoc.retrievedDocuments,
+      saved: isTechnical,
+    });
   } catch (error) {
     console.error("Chat error:", error);
     return res.status(500).json({ error: "Failed to generate a response." });
