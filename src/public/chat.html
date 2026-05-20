@@ -92,6 +92,13 @@
     input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); sendMessage(); } });
 
     const history = [];
+    let appointmentDetails = {
+      clientName: null,
+      email: null,
+      phone: null,
+      appointmentDateTime: null,
+      query: null
+    };
 
     async function sendMessage(){
       const text = input.value.trim();
@@ -107,7 +114,7 @@
         const resp = await fetch('/chat', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ message: text, history: history })
+          body:JSON.stringify({ message: text, history: history, appointmentDetails: appointmentDetails })
         });
         const data = await resp.json();
         if(!resp.ok) throw new Error(data.error || 'Chat failed');
@@ -117,6 +124,28 @@
         // Push user and assistant response to history
         history.push({ role: 'user', content: text });
         history.push({ role: 'assistant', content: data.response || '' });
+
+        // Update local appointment details state
+        if(data.details) {
+          appointmentDetails = {
+            clientName: data.details.clientName || appointmentDetails.clientName,
+            email: data.details.email || appointmentDetails.email,
+            phone: data.details.phone || appointmentDetails.phone,
+            appointmentDateTime: data.details.appointmentDateTime || appointmentDetails.appointmentDateTime,
+            query: data.details.query || appointmentDetails.query
+          };
+        }
+
+        // Reset if booking completes
+        if(data.appointment) {
+          appointmentDetails = {
+            clientName: null,
+            email: null,
+            phone: null,
+            appointmentDateTime: null,
+            query: null
+          };
+        }
 
         showSources(data.retrievedDocuments || []);
         // Show save indicator only for technical queries

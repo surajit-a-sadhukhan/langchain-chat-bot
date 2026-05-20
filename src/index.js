@@ -275,7 +275,7 @@ app.get("/appointments-ui", (req, res) => {
 });
 
 app.post("/chat", async (req, res) => {
-  const { message, history } = req.body;
+  const { message, history, appointmentDetails } = req.body;
   if (!message) {
     return res.status(400).json({ error: "Message is required." });
   }
@@ -290,28 +290,41 @@ app.post("/chat", async (req, res) => {
       )
       .join("\n\n");
 
+    const detailsState = `
+Current collected details so far:
+- Client Name: ${appointmentDetails?.clientName || "not provided"}
+- Email Address: ${appointmentDetails?.email || "not provided"}
+- Phone/Contact: ${appointmentDetails?.phone || "not provided"}
+- Preferred Date & Time: ${appointmentDetails?.appointmentDateTime || "not provided"}
+- Topic / Reason: ${appointmentDetails?.query || "not provided"}
+`;
+
     const systemInstruction = `You are a helpful assistant that receives a user question and decides two things:
 1. Whether the question is technical.
 2. Whether it should trigger a local appointment action.
 
-To schedule an appointment, you MUST gather all the following details:
+To schedule an appointment, you MUST gather all the following important details:
 - Client Name (clientName)
 - Email Address (email)
-- Phone Number (phone)
+- Contact / Phone Number (phone)
 - Preferred Appointment Date & Time (appointmentDateTime) - parse this into a valid ISO 8601 string or readable date-time string if possible.
-- Topic / Reason for appointment (query)
+
+Optional detail:
+- Topic / Reason for appointment (query) - collect this if the user volunteers it, but do not block scheduling if it is missing.
 
 Rules for scheduling an appointment:
-- Check the conversation history and the current question to see which details have been provided.
-- If the user wants to book/schedule an appointment, but any of the required details (Name, Email, Phone, Date/Time, or Topic) are missing, you MUST NOT trigger the appointment. Set "appointment" to false, and in the "response", politely ask the user for the missing details.
-- Once (and only when) ALL the required details are gathered, set "appointment" to true and populate the "details" object with the collected values. Set a friendly confirmation message in "response".
+- Review the "Current collected details so far" section below.
+- Analyze the user's new message and the conversation history to update these details.
+- Always output the full updated state of all collected details (both previously collected and newly identified) in the "details" object in your JSON response. Do not lose any details that were already collected.
+- If any of the important details (Name, Email, Phone/Contact, or Date/Time) are missing, you MUST NOT trigger the appointment. Set "appointment" to false, and in the "response", politely ask the user for the missing details.
+- Once (and only when) ALL the important details (Name, Email, Phone/Contact, and Date/Time) are gathered, set "appointment" to true and populate the "details" object with the complete collected values. Set a friendly confirmation message in "response".
 
 Respond only in valid JSON with these keys:
 - technical: true or false
 - appointment: true or false
 - reason: a short explanation of your decision
 - response: a natural-language answer to the user (e.g. answering a question, asking for missing appointment details, or confirming the scheduled appointment)
-- details: object with keys: clientName, email, phone, appointmentDateTime, query
+- details: object with keys: clientName, email, phone, appointmentDateTime, query. Ensure you include all details collected so far.
 `;
 
     const formattedHistory = Array.isArray(history) && history.length > 0
@@ -319,8 +332,8 @@ Respond only in valid JSON with these keys:
       : "";
 
     const prompt = relevantDocs.length
-      ? `${systemInstruction}\n\nContext:\n${context}\n\n${formattedHistory ? `Conversation History:\n${formattedHistory}\n\n` : ""}Question: ${message}`
-      : `${systemInstruction}\n\n${formattedHistory ? `Conversation History:\n${formattedHistory}\n\n` : ""}Question: ${message}`;
+      ? `${systemInstruction}\n\nContext:\n${context}\n\n${detailsState}\n\n${formattedHistory ? `Conversation History:\n${formattedHistory}\n\n` : ""}Question: ${message}`
+      : `${systemInstruction}\n\n${detailsState}\n\n${formattedHistory ? `Conversation History:\n${formattedHistory}\n\n` : ""}Question: ${message}`;
 console.log("Constructed prompt for LLM:", prompt);
     const response = await invokeLLM(prompt);
     console.log("LLM raw response:", response);
