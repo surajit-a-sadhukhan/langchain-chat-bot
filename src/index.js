@@ -91,7 +91,12 @@ async function getNearestDocuments(query, limit = 3) {
 }
 
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.sendFile(path.join(__dirname, "public", "chat.html"));
+});
+
+// Serve the documents UI page (keeps the API route at /documents intact)
+app.get("/documents-ui", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "documents.html"));
 });
 
 app.get("/documents", async (req, res) => {
