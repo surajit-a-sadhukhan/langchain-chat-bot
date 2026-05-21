@@ -201,10 +201,7 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "chat.html"));
 });
 
-// Serve the documents UI page (keeps the API route at /documents intact)
-app.get("/documents-ui", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "documents.html"));
-});
+
 
 app.get("/documents", async (req, res) => {
   const docs = await documentsCollection
@@ -268,10 +265,6 @@ app.get("/appointments", async (req, res) => {
     console.error("Fetch appointments error:", error);
     return res.status(500).json({ error: "Failed to fetch appointments." });
   }
-});
-
-app.get("/appointments-ui", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "appointments.html"));
 });
 
 app.post("/chat", async (req, res) => {
