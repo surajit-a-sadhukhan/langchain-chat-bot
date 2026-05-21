@@ -17,14 +17,6 @@ const mongoChatCollection = process.env.MONGODB_CHAT_COLLECTION || "chats";
 const mongoAppointmentsCollection =
   process.env.MONGODB_APPOINTMENTS_COLLECTION || "appointments";
 
-if (!geminiKey) {
-  throw new Error("Missing GOOGLE_API_KEY in .env");
-}
-
-if (!mongoUri) {
-  throw new Error("Missing MONGODB_URI in .env");
-}
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
@@ -154,7 +146,14 @@ let documentsCollection;
 let chatCollection;
 let appointmentsCollection;
 
-const initMongo = async () => {
+const startAgenticAI = async () => {
+  if (!geminiKey) {
+    throw new Error("Missing GOOGLE_API_KEY in .env");
+  }
+  if (!mongoUri) {
+    throw new Error("Missing MONGODB_URI in .env");
+  }
+
   const client = new MongoClient(mongoUri);
   await client.connect();
   const db = client.db(mongoDbName);
@@ -175,6 +174,10 @@ const initMongo = async () => {
     appointmentDateTime: 1,
   });
   await appointmentsCollection.createIndex({ createdAt: 1 });
+
+  app.listen(port, () => {
+    console.log(`Agentic AI server listening on http://localhost:${port}`);
+  });
 };
 
 app.get("/", (req, res) => {
@@ -182,19 +185,24 @@ app.get("/", (req, res) => {
 });
 
 app.get("/documents", async (req, res) => {
-  const docs = await documentsCollection
-    .find({}, { projection: { title: 1, source: 1, text: 1, uploadedAt: 1 } })
-    .sort({ uploadedAt: -1 })
-    .toArray();
-  return res.json({
-    documents: docs.map((doc) => ({
-      id: doc._id.toString(),
-      title: doc.title,
-      source: doc.source,
-      length: doc.text.length,
-      uploadedAt: doc.uploadedAt,
-    })),
-  });
+  try {
+    const docs = await documentsCollection
+      .find({}, { projection: { title: 1, source: 1, text: 1, uploadedAt: 1 } })
+      .sort({ uploadedAt: -1 })
+      .toArray();
+    return res.json({
+      documents: docs.map((doc) => ({
+        id: doc._id.toString(),
+        title: doc.title,
+        source: doc.source,
+        length: doc.text.length,
+        uploadedAt: doc.uploadedAt,
+      })),
+    });
+  } catch (error) {
+    console.error("Fetch documents error:", error);
+    return res.status(500).json({ error: "Failed to fetch documents." });
+  }
 });
 
 app.post("/upload", async (req, res) => {
@@ -472,15 +480,15 @@ app.get("/chats", async (req, res) => {
   }
 });
 
+// Global error handler middleware
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(500).json({ error: "An internal server error occurred." });
+});
+
 const port = process.env.PORT || 3001;
 
-initMongo()
-  .then(() => {
-    app.listen(port, () => {
-      console.log(`Chatbot server listening on http://localhost:${port}`);
-    });
-  })
-  .catch((error) => {
-    console.error("Failed to initialize MongoDB:", error);
-    process.exit(1);
-  });
+startAgenticAI().catch((error) => {
+  console.error("Failed to start Agentic AI:", error);
+  process.exit(1);
+});
