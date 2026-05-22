@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login — LangChain Chat</title>
+  <style>
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;background:#eef2ff;color:#0f172a;display:flex;align-items:center;justify-content:center;height:100vh}
+    .card{background:#fff;border-radius:20px;box-shadow:0 24px 80px rgba(15,23,42,.12);width:min(440px,90vw);padding:28px}
+    h1{margin:0 0 18px;font-size:26px;color:#111827}
+    p{margin:0 0 24px;color:#475569;line-height:1.6}
+    label{display:block;font-size:14px;color:#334155;margin-bottom:6px}
+    input{width:100%;padding:12px 14px;margin-bottom:16px;border:1px solid #dbe2ef;border-radius:12px;font-size:15px}
+    button{width:100%;padding:12px 16px;border:none;border-radius:12px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer}
+    .note{font-size:13px;color:#64748b;margin-top:16px;background:#f8fafc;padding:14px;border-radius:12px;border:1px solid #e2e8f0}
+    .error{color:#b91c1c;font-size:14px;margin-bottom:12px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Sign in to your account</h1>
+    <p>Use the following credentials to login and chat with your own documents.</p>
+    <div id="error" class="error" hidden></div>
+    <form id="loginForm">
+      <label for="name">Name</label>
+      <input id="name" name="name" type="text" value="surajit" autocomplete="name" required />
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" value="surajit@yest.com" autocomplete="email" required />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" value="Surajit@1992" autocomplete="current-password" required />
+      <button type="submit">Login</button>
+    </form>
+    <div class="note">
+      Current user details:
+      <ul style="margin:8px 0 0 16px;padding:0;list-style:disc">
+        <li>Name: surajit</li>
+        <li>Email: surajit@yest.com</li>
+        <li>Password: Surajit@1992</li>
+        <li>User ID: 1</li>
+      </ul>
+    </div>
+  </div>
+  <script>
+    const loginForm = document.getElementById('loginForm');
+    const errorEl = document.getElementById('error');
+
+    const expected = {
+      name: 'surajit',
+      email: 'surajit@yest.com',
+      password: 'Surajit@1992',
+      id: 1,
+    };
+
+    loginForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const name = document.getElementById('name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (name !== expected.name || email !== expected.email || password !== expected.password) {
+        errorEl.textContent = 'Invalid credentials. Please use the provided user details.';
+        errorEl.hidden = false;
+        return;
+      }
+
+      localStorage.setItem('currentUser', JSON.stringify({ id: expected.id, name: expected.name, email: expected.email }));
+      window.location.href = '/chat.html';
+    });
+  </script>
+</body>
+</html>

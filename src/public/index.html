@@ -36,6 +36,10 @@
         <a href="/documents.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">Documents</a>
         <a href="/appointments.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">Appointments</a>
       </nav>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+        <span id="userBadge" style="font-size:13px;color:#dbeafe"></span>
+        <button id="logoutBtn" style="background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.32);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer">Logout</button>
+      </div>
     </div>
   </header>
 
@@ -60,11 +64,22 @@
   <footer>Running OpenAI-powered assistant · <a href="/" style="color:inherit;text-decoration:underline">Home</a></footer>
 
   <script>
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    if (!currentUser) {
+      window.location.href = '/';
+    }
     const messagesEl = document.getElementById('messages');
     const input = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
     const sourcesEl = document.getElementById('sources');
     const sourcesList = document.getElementById('sourcesList');
+    const userBadge = document.getElementById('userBadge');
+    const logoutBtn = document.getElementById('logoutBtn');
+    userBadge.textContent = `Logged in as ${currentUser.name} (${currentUser.email})`;
+    logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem('currentUser');
+      window.location.href = '/';
+    });
 
     function appendMessage(text, cls) {
       const wrap = document.createElement('div');

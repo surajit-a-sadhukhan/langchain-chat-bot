@@ -118,13 +118,13 @@ const evaluateLlmDecision = (rawResponse, message) => {
   };
 };
 
-const getNearestDocuments = async (query, limit = 3) => {
+const getNearestDocuments = async (query, userId = 1, limit = 3) => {
   if (!documentsCollection) {
     return [];
   }
   const results = await documentsCollection
     .find(
-      { $text: { $search: query } },
+      { $text: { $search: query }, userId },
       {
         projection: {
           title: 1,
@@ -166,6 +166,11 @@ const startAgenticAI = async () => {
     text: "text",
   });
   await documentsCollection.createIndex({ uploadedAt: 1 });
+  await documentsCollection.createIndex({ userId: 1 });
+  await documentsCollection.updateMany(
+    { $or: [{ userId: { $exists: false } }, { userId: null }] },
+    { $set: { userId: 1 } },
+  );
   await chatCollection.createIndex({ message: "text", response: "text" });
   await chatCollection.createIndex({ createdAt: 1 });
   await appointmentsCollection.createIndex({
@@ -181,13 +186,14 @@ const startAgenticAI = async () => {
 };
 
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "chat.html"));
+  res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
 app.get("/documents", async (req, res) => {
   try {
+    const userId = Number(req.query.userId) || 1;
     const docs = await documentsCollection
-      .find({}, { projection: { title: 1, source: 1, text: 1, uploadedAt: 1 } })
+      .find({ userId }, { projection: { title: 1, source: 1, text: 1, uploadedAt: 1 } })
       .sort({ uploadedAt: -1 })
       .toArray();
     return res.json({
@@ -206,7 +212,7 @@ app.get("/documents", async (req, res) => {
 });
 
 app.post("/upload", async (req, res) => {
-  const { title, source, text } = req.body;
+  const { title, source, text, userId } = req.body;
   if (!title || !text) {
     return res.status(400).json({ error: "title and text are required" });
   }
@@ -218,6 +224,7 @@ app.post("/upload", async (req, res) => {
       text,
       uploadedAt: new Date().toISOString(),
       provider: "google",
+      userId: Number(userId) || 1,
     };
     const result = await documentsCollection.insertOne(document);
     return res.json({
@@ -320,13 +327,14 @@ app.get("/appointments-ui", (req, res) => {
 });
 
 app.post("/chat", async (req, res) => {
-  const { message, history, appointmentDetails } = req.body;
+  const { message, history, appointmentDetails, userId } = req.body;
   if (!message) {
     return res.status(400).json({ error: "Message is required." });
   }
 
   try {
-    const relevantDocs = await getNearestDocuments(message, 3);
+    const currentUserId = Number(userId) || 1;
+    const relevantDocs = await getNearestDocuments(message, currentUserId, 3);
     console.log("Relevant documents found:", relevantDocs);
     const context = relevantDocs
       .map(
@@ -407,6 +415,7 @@ Respond only in valid JSON with these keys:
       appointment: decision.appointment,
       appointmentResult: decision.appointmentResult,
       llmReason: decision.reason,
+      userId: currentUserId,
     };
 
     await chatCollection.insertOne(chatDoc);
@@ -424,6 +433,7 @@ Respond only in valid JSON with these keys:
         status: "scheduled",
         confirmation: "Appointment has been set.",
         llmReason: decision.reason,
+        userId: currentUserId,
       };
       const appointmentResult =
         await appointmentsCollection.insertOne(appointmentDoc);
@@ -440,6 +450,7 @@ Respond only in valid JSON with these keys:
       appointment: decision.appointment,
       appointmentResult: decision.appointmentResult,
       savedAppointment,
+      details: decision.details || null,
       reason: decision.reason,
     });
   } catch (error) {

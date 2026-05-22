@@ -398,6 +398,10 @@
         <a href="/documents.html">Documents</a>
         <a href="/appointments.html">Appointments</a>
       </nav>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+        <span id="userBadge" style="font-size:13px;color:#fff"></span>
+        <button id="logoutBtn" style="background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.32);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer">Logout</button>
+      </div>
     </div>
   </header>
 
@@ -425,8 +429,19 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chrono-node@2.3.8/dist/bundle.min.js"></script>
   <script>
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    if (!currentUser) {
+      window.location.href = '/';
+    }
     const listArea = document.getElementById('listArea');
     const refreshBtn = document.getElementById('refreshBtn');
+    const userBadge = document.getElementById('userBadge');
+    const logoutBtn = document.getElementById('logoutBtn');
+    userBadge.textContent = `Logged in as ${currentUser.name} (${currentUser.email})`;
+    logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem('currentUser');
+      window.location.href = '/';
+    });
 
     const escapeHtml = (value) => (value || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
