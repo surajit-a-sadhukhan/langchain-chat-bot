@@ -30,6 +30,10 @@
         <a href="/documents.html">Documents</a>
         <a href="/appointments.html">Appointments</a>
       </nav>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+        <span id="userBadge" style="font-size:13px;color:#fff"></span>
+        <button id="logoutBtn" style="background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.32);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer">Logout</button>
+      </div>
     </div>
   </header>
 
@@ -56,6 +60,10 @@
   </div>
 
   <script>
+    const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
+    if (!currentUser) {
+      window.location.href = '/';
+    }
     const listEl = document.getElementById('list');
     const titleEl = document.getElementById('title');
     const sourceEl = document.getElementById('source');
@@ -64,11 +72,19 @@
     const statusEl = document.getElementById('status');
     const uploadBtn = document.getElementById('upload');
     const refreshBtn = document.getElementById('refresh');
+    const userBadge = document.getElementById('userBadge');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    userBadge.textContent = `Logged in as ${currentUser.name} (${currentUser.email})`;
+    logoutBtn.addEventListener('click', () => {
+      sessionStorage.removeItem('currentUser');
+      window.location.href = '/';
+    });
 
     async function loadDocs(){
       listEl.innerHTML = 'Loading...';
       try{
-        const resp = await fetch('/documents');
+        const resp = await fetch(`/documents?userId=${encodeURIComponent(currentUser.id)}`);
         const data = await resp.json();
         if(!data.documents.length){ listEl.innerHTML = '<div class="small">No documents yet.</div>'; return }
         listEl.innerHTML = '';
@@ -92,7 +108,7 @@
       if(!title||!text){ statusEl.textContent='Provide title and text.'; return }
       uploadBtn.disabled = true; statusEl.textContent='Uploading...';
       try{
-        const resp = await fetch('/upload',{ method:'POST',headers:{'Content-Type':'application/json'}, body:JSON.stringify({ title, source, text }) });
+        const resp = await fetch('/upload',{ method:'POST',headers:{'Content-Type':'application/json'}, body:JSON.stringify({ title, source, text, userId: currentUser.id }) });
         const data = await resp.json(); if(!resp.ok) throw new Error(data.error||'Upload failed');
         statusEl.textContent = `Uploaded ${data.document.title}`;
         titleEl.value=''; sourceEl.value=''; textEl.value=''; fileEl.value='';
