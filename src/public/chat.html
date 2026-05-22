@@ -4,13 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Chat — LangChain</title>
+  <link rel="stylesheet" href="/style.css" />
   <style>
-    :root{--bg:#f5f7fb;--card:#ffffff;--muted:#6b7280;--primary:#3743ff;--user:#0ea5a4}
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;color:#0f172a;background:var(--bg);}
-    header{background:linear-gradient(90deg,#3b82f6 0%,#7c3aed 100%);color:#fff;padding:20px 28px}
-    header h1{margin:0;font-size:20px;letter-spacing:-0.2px}
-    .container{max-width:960px;margin:24px auto;padding:0 16px}
     .chat-card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 6px 20px rgba(16,24,40,0.06)}
     .messages{height:420px;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
     .msg{max-width:78%;padding:12px 14px;border-radius:12px;line-height:1.45;white-space:pre-wrap}
@@ -22,23 +17,21 @@
     .input-row button{background:var(--primary);color:#fff;border:none;padding:0 18px;border-radius:10px;cursor:pointer}
     .sources{margin-top:12px;font-size:13px;color:var(--muted);}
     .source-item{background:#fafafa;border:1px solid #eef2ff;padding:10px;border-radius:8px;margin-bottom:8px}
-    .toolbar{display:flex;gap:8px;align-items:center}
-    .small{font-size:13px;color:var(--muted)}
     footer{max-width:960px;margin:18px auto;padding:0 16px;color:var(--muted);font-size:13px}
   </style>
 </head>
 <body>
   <header>
-    <div style="display:flex;justify-content:space-between;align-items:center;max-width:960px;margin:0 auto">
-      <h1>LangChain — Professional Chat</h1>
+    <div class="header-inner">
+      <h1>Professional Chat</h1>
       <nav class="toolbar">
-        <a href="/chat.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">AI Chat</a>
-        <a href="/documents.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">Documents</a>
-        <a href="/appointments.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">Appointments</a>
+        <a href="/chat.html">AI Chat</a>
+        <a href="/documents.html">Documents</a>
+        <a href="/appointments.html">Appointments</a>
       </nav>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
-        <span id="userBadge" style="font-size:13px;color:#dbeafe"></span>
-        <button id="logoutBtn" style="background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.32);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer">Logout</button>
+      <div class="user-nav">
+        <span id="userBadge"></span>
+        <button id="logoutBtn" class="btn-logout">Logout</button>
       </div>
     </div>
   </header>
@@ -63,23 +56,13 @@
 
   <footer>Running OpenAI-powered assistant · <a href="/" style="color:inherit;text-decoration:underline">Home</a></footer>
 
+  <script src="/script.js"></script>
   <script>
-    const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
-    if (!currentUser) {
-      window.location.href = '/';
-    }
     const messagesEl = document.getElementById('messages');
     const input = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
     const sourcesEl = document.getElementById('sources');
     const sourcesList = document.getElementById('sourcesList');
-    const userBadge = document.getElementById('userBadge');
-    const logoutBtn = document.getElementById('logoutBtn');
-    userBadge.textContent = `Logged in as ${currentUser.name} (${currentUser.email})`;
-    logoutBtn.addEventListener('click', () => {
-      sessionStorage.removeItem('currentUser');
-      window.location.href = '/';
-    });
 
     function appendMessage(text, cls) {
       const wrap = document.createElement('div');
@@ -95,13 +78,11 @@
       docs.forEach(d=>{
         const div = document.createElement('div');
         div.className = 'source-item';
-        div.innerHTML = `<strong>${escapeHtml(d.title)}</strong><div style="font-size:12px;color:#475569">${escapeHtml(d.source)} · score: ${Number(d.score).toFixed(3)}</div>`;
+        div.innerHTML = `<strong>${escapeHtml(d.title)}</strong><div style="font-size:12px;color:#475569">${escapeHtml(d.source)}</div>`;
         sourcesList.appendChild(div);
       });
       sourcesEl.hidden = false;
     }
-
-    function escapeHtml(s){ return (s+'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;') }
 
     sendBtn.addEventListener('click', sendMessage);
     input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); sendMessage(); } });

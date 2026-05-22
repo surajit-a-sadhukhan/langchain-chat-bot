@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Dashboard — LangChain</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .admin-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+      margin-top: 32px;
+    }
+    .user-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .user-table th, .user-table td {
+      padding: 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .user-table th {
+      background: var(--surface-alt);
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      border-radius: 8px;
+    }
+    .modal-overlay[hidden] {
+      display: none;
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal {
+      background: #fff;
+      padding: 32px;
+      border-radius: 20px;
+      width: min(400px, 90vw);
+    }
+    .modal h3 { margin-top: 0; }
+    .modal label { display: block; margin: 12px 0 4px; font-size: 0.9rem; }
+    .modal input { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+    .modal-btns { display: flex; gap: 12px; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>Admin Dashboard</h1>
+      <nav class="toolbar">
+        <a href="/chat.html">AI Chat</a>
+        <a href="/documents.html">Documents</a>
+        <a href="/appointments.html">Appointments</a>
+        <a href="/admin.html" style="background: rgba(255,255,255,0.2)">Admin</a>
+      </nav>
+      <div class="user-nav">
+        <span id="userBadge"></span>
+        <button id="logoutBtn" class="btn-logout">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="card">
+      <div style="padding: 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin:0">Registered Users</h2>
+        <button onclick="fetchUsers()" class="button-primary btn-small">Refresh</button>
+      </div>
+      <div id="userList">
+        <table class="user-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Joined</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="userTableBody">
+            <tr><td colspan="4" style="text-align:center; padding: 40px;">Loading users...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <div id="editModal" class="modal-overlay" hidden>
+    <div class="modal">
+      <h3>Edit User</h3>
+      <input type="hidden" id="editUserId" />
+      <label>Name</label>
+      <input type="text" id="editName" />
+      <label>Email</label>
+      <input type="email" id="editEmail" />
+      <label>New Password (leave blank to keep current)</label>
+      <input type="password" id="editPassword" placeholder="••••••••" />
+      <div class="modal-btns">
+        <button onclick="saveUser()" class="button-primary" style="flex:1">Save Changes</button>
+        <button onclick="closeModal()" class="btn-logout" style="flex:1; color: var(--text); border-color: var(--border)">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/script.js"></script>
+  <script>
+    // Security: Only allow if user is 'admin'
+    if (currentUser?.email !== 'admin@agentic.ai') {
+      alert('Access Denied: Admins Only');
+      window.location.href = '/chat.html';
+    }
+
+    async function fetchUsers() {
+      try {
+        const resp = await fetch(`/admin/users?adminId=${currentUser.id}`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error);
+        renderUsers(data.users);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function renderUsers(users) {
+      const tbody = document.getElementById('userTableBody');
+      tbody.innerHTML = '';
+      users.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(u.name)}</td>
+          <td>${escapeHtml(u.email)}</td>
+          <td>${new Date(u.createdAt).toLocaleDateString()}</td>
+          <td class="actions">
+            <button class="button-primary btn-small" onclick="openEditModal('${u.id}', '${escapeHtml(u.name)}', '${escapeHtml(u.email)}')">Edit</button>
+            <button class="btn-logout btn-small" style="color: var(--error); border-color: var(--error)" onclick="deleteUser('${u.id}')">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function openEditModal(id, name, email) {
+      document.getElementById('editUserId').value = id;
+      document.getElementById('editName').value = name;
+      document.getElementById('editEmail').value = email;
+      document.getElementById('editPassword').value = '';
+      document.getElementById('editModal').hidden = false;
+    }
+
+    function closeModal() {
+      document.getElementById('editModal').hidden = true;
+    }
+
+    async function saveUser() {
+      const id = document.getElementById('editUserId').value;
+      const name = document.getElementById('editName').value;
+      const email = document.getElementById('editEmail').value;
+      const password = document.getElementById('editPassword').value;
+
+      try {
+        const resp = await fetch(`/admin/users/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password, adminId: currentUser.id })
+        });
+        if (!resp.ok) throw new Error('Failed to update user');
+        showToast('User updated successfully');
+        closeModal();
+        fetchUsers();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function deleteUser(id) {
+      if (!confirm('Are you sure you want to delete this user? All their data will be lost.')) return;
+      try {
+        const resp = await fetch(`/admin/users/${id}?adminId=${currentUser.id}`, { method: 'DELETE' });
+        if (!resp.ok) throw new Error('Failed to delete user');
+        showToast('User deleted');
+        fetchUsers();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    fetchUsers();
+  </script>
+</body>
+</html>

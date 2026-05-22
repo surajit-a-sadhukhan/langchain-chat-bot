@@ -3,179 +3,138 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Chat — LangChain</title>
+  <title>Login / Register — LangChain Chat</title>
   <style>
-    :root{--bg:#f5f7fb;--card:#ffffff;--muted:#6b7280;--primary:#3743ff;--user:#0ea5a4}
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;color:#0f172a;background:var(--bg);}
-    header{background:linear-gradient(90deg,#3b82f6 0%,#7c3aed 100%);color:#fff;padding:20px 28px}
-    header h1{margin:0;font-size:20px;letter-spacing:-0.2px}
-    .container{max-width:960px;margin:24px auto;padding:0 16px}
-    .chat-card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 6px 20px rgba(16,24,40,0.06)}
-    .messages{height:420px;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
-    .msg{max-width:78%;padding:12px 14px;border-radius:12px;line-height:1.45;white-space:pre-wrap}
-    .msg.assistant{background:#eef2ff;color:#0f172a;align-self:flex-start;border-top-left-radius:4px}
-    .msg.user{background:#e6fffa;color:#064e3b;align-self:flex-end;border-top-right-radius:4px;text-align:right}
-    .meta{font-size:12px;color:var(--muted);margin-top:6px}
-    .input-row{display:flex;gap:12px;margin-top:12px}
-    .input-row input{flex:1;padding:12px;border-radius:10px;border:1px solid #e6edf6}
-    .input-row button{background:var(--primary);color:#fff;border:none;padding:0 18px;border-radius:10px;cursor:pointer}
-    .sources{margin-top:12px;font-size:13px;color:var(--muted);}
-    .source-item{background:#fafafa;border:1px solid #eef2ff;padding:10px;border-radius:8px;margin-bottom:8px}
-    .toolbar{display:flex;gap:8px;align-items:center}
-    .small{font-size:13px;color:var(--muted)}
-    footer{max-width:960px;margin:18px auto;padding:0 16px;color:var(--muted);font-size:13px}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;background:#eef2ff;color:#0f172a;display:flex;align-items:center;justify-content:center;height:100vh}
+    .card{background:#fff;border-radius:20px;box-shadow:0 24px 80px rgba(15,23,42,.12);width:min(520px,92vw);padding:28px}
+    h1{margin:0 0 18px;font-size:26px;color:#111827}
+    p{margin:0 0 20px;color:#475569;line-height:1.6}
+    .tab-buttons{display:flex;gap:12px;margin-bottom:20px}
+    .tab-buttons button{flex:1;padding:12px 16px;border-radius:12px;border:1px solid #dbe2ef;background:#f8fafc;color:#111827;cursor:pointer;font-weight:700}
+    .tab-buttons button.active{background:#2563eb;color:#fff;border-color:#2563eb}
+    label{display:block;font-size:14px;color:#334155;margin-bottom:6px}
+    input{width:100%;padding:12px 14px;margin-bottom:16px;border:1px solid #dbe2ef;border-radius:12px;font-size:15px}
+    button[type="submit"]{width:100%;padding:12px 16px;border:none;border-radius:12px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer}
+    .note{font-size:13px;color:#64748b;margin-top:16px;background:#f8fafc;padding:14px;border-radius:12px;border:1px solid #e2e8f0}
+    .error{color:#b91c1c;font-size:14px;margin-bottom:12px}
+    .success{color:#047857;font-size:14px;margin-bottom:12px}
   </style>
 </head>
 <body>
-  <header>
-    <div style="display:flex;justify-content:space-between;align-items:center;max-width:960px;margin:0 auto">
-      <h1>LangChain — Professional Chat</h1>
-      <nav class="toolbar">
-        <a href="/chat.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">AI Chat</a>
-        <a href="/documents.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">Documents</a>
-        <a href="/appointments.html" style="color:rgba(255,255,255,0.92);text-decoration:none;font-weight:600">Appointments</a>
-      </nav>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
-        <span id="userBadge" style="font-size:13px;color:#dbeafe"></span>
-        <button id="logoutBtn" style="background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.32);color:#fff;border-radius:10px;padding:8px 12px;cursor:pointer">Logout</button>
-      </div>
+  <div class="card">
+    <div class="tab-buttons">
+      <button id="loginTab" class="active" type="button">Login</button>
+      <button id="registerTab" type="button">Register</button>
     </div>
-  </header>
+    <h1 id="formTitle">Login to your account</h1>
+    <p id="formSubtitle">Login with your email and password to access your documents and chat.</p>
+    <div id="message" class="error" hidden></div>
 
-  <main class="container">
-    <div class="chat-card">
-      <div class="messages" id="messages" aria-live="polite"></div>
+    <form id="loginForm">
+      <label for="loginEmail">Email</label>
+      <input id="loginEmail" name="email" type="email" autocomplete="email" required />
+      <label for="loginPassword">Password</label>
+      <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
+      <button type="submit">Login</button>
+    </form>
 
-      <div class="meta">Tip: include context or ask follow-up questions</div>
+    <form id="registerForm" hidden>
+      <label for="registerName">Name</label>
+      <input id="registerName" name="name" type="text" autocomplete="name" required />
+      <label for="registerEmail">Email</label>
+      <input id="registerEmail" name="email" type="email" autocomplete="email" required />
+      <label for="registerPassword">Password</label>
+      <input id="registerPassword" name="password" type="password" autocomplete="new-password" required />
+      <button type="submit">Register</button>
+    </form>
 
-      <div class="input-row">
-        <input id="messageInput" placeholder="Ask anything..." autocomplete="off" />
-        <button id="sendBtn">Send</button>
-      </div>
-
-      <div class="sources" id="sources" hidden>
-        <strong>Sources:</strong>
-        <div id="sourcesList"></div>
-      </div>
+    <div class="note">
+      <strong>Admin Login:</strong><br>
+      Email: admin@agentic.ai | Password: Admin@123
+      <hr style="margin: 10px 0; border: none; border-top: 1px solid #e2e8f0;">
+      If you are using the sample user, register with the email below or login after registration:
+      <ul style="margin:8px 0 0 16px;padding:0;list-style:disc">
+        <li>Name: surajit</li>
+        <li>Email: surajit@yest.com</li>
+        <li>Password: Surajit@1992</li>
+      </ul>
     </div>
-  </main>
-
-  <footer>Running OpenAI-powered assistant · <a href="/" style="color:inherit;text-decoration:underline">Home</a></footer>
+  </div>
 
   <script>
-    const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
-    if (!currentUser) {
-      window.location.href = '/';
-    }
-    const messagesEl = document.getElementById('messages');
-    const input = document.getElementById('messageInput');
-    const sendBtn = document.getElementById('sendBtn');
-    const sourcesEl = document.getElementById('sources');
-    const sourcesList = document.getElementById('sourcesList');
-    const userBadge = document.getElementById('userBadge');
-    const logoutBtn = document.getElementById('logoutBtn');
-    userBadge.textContent = `Logged in as ${currentUser.name} (${currentUser.email})`;
-    logoutBtn.addEventListener('click', () => {
-      sessionStorage.removeItem('currentUser');
-      window.location.href = '/';
-    });
+    const loginTab = document.getElementById('loginTab');
+    const registerTab = document.getElementById('registerTab');
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+    const formTitle = document.getElementById('formTitle');
+    const formSubtitle = document.getElementById('formSubtitle');
+    const messageEl = document.getElementById('message');
 
-    function appendMessage(text, cls) {
-      const wrap = document.createElement('div');
-      wrap.className = 'msg ' + cls;
-      wrap.textContent = text;
-      messagesEl.appendChild(wrap);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    }
-
-    function showSources(docs){
-      sourcesList.innerHTML = '';
-      if(!docs || !docs.length){ sourcesEl.hidden = true; return }
-      docs.forEach(d=>{
-        const div = document.createElement('div');
-        div.className = 'source-item';
-        div.innerHTML = `<strong>${escapeHtml(d.title)}</strong><div style="font-size:12px;color:#475569">${escapeHtml(d.source)} · score: ${Number(d.score).toFixed(3)}</div>`;
-        sourcesList.appendChild(div);
-      });
-      sourcesEl.hidden = false;
-    }
-
-    function escapeHtml(s){ return (s+'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;') }
-
-    sendBtn.addEventListener('click', sendMessage);
-    input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); sendMessage(); } });
-
-    const history = [];
-    let appointmentDetails = {
-      clientName: null,
-      email: null,
-      phone: null,
-      appointmentDateTime: null,
-      query: null
+    const showTab = (tab) => {
+      const isLogin = tab === 'login';
+      loginForm.hidden = !isLogin;
+      registerForm.hidden = isLogin;
+      loginTab.classList.toggle('active', isLogin);
+      registerTab.classList.toggle('active', !isLogin);
+      formTitle.textContent = isLogin ? 'Login to your account' : 'Create a new account';
+      formSubtitle.textContent = isLogin
+        ? 'Login with your email and password to access your documents and chat.'
+        : 'Register a new account to keep your documents and chat separate.';
+      messageEl.hidden = true;
     };
 
-    async function sendMessage(){
-      const text = input.value.trim();
-      if(!text) return;
-      appendMessage(text,'user');
-      input.value = '';
-      sendBtn.disabled = true;
+    loginTab.addEventListener('click', () => showTab('login'));
+    registerTab.addEventListener('click', () => showTab('register'));
 
-      appendMessage('Thinking...','assistant');
-      const lastAssistant = messagesEl.querySelector('.msg.assistant:last-child');
+    const saveSessionUser = (user) => {
+      sessionStorage.setItem('currentUser', JSON.stringify(user));
+      window.location.href = '/chat.html';
+    };
 
-      try{
-        const resp = await fetch('/chat', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ message: text, history: history, appointmentDetails: appointmentDetails })
+    loginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      messageEl.hidden = true;
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+
+      try {
+        const resp = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
         });
         const data = await resp.json();
-        if(!resp.ok) throw new Error(data.error || 'Chat failed');
-        // replace 'Thinking...' with actual answer
-        if(lastAssistant) lastAssistant.textContent = data.response || JSON.stringify(data);
-        
-        // Push user and assistant response to history
-        history.push({ role: 'user', content: text });
-        history.push({ role: 'assistant', content: data.response || '' });
+        if (!resp.ok) throw new Error(data.error || 'Login failed');
+        saveSessionUser(data.user);
+      } catch (error) {
+        messageEl.textContent = error.message;
+        messageEl.className = 'error';
+        messageEl.hidden = false;
+      }
+    });
 
-        // Update local appointment details state
-        if(data.details) {
-          appointmentDetails = {
-            clientName: data.details.clientName || appointmentDetails.clientName,
-            email: data.details.email || appointmentDetails.email,
-            phone: data.details.phone || appointmentDetails.phone,
-            appointmentDateTime: data.details.appointmentDateTime || appointmentDetails.appointmentDateTime,
-            query: data.details.query || appointmentDetails.query
-          };
-        }
+    registerForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      messageEl.hidden = true;
+      const name = document.getElementById('registerName').value.trim();
+      const email = document.getElementById('registerEmail').value.trim();
+      const password = document.getElementById('registerPassword').value;
 
-        // Reset if booking completes
-        if(data.appointment) {
-          appointmentDetails = {
-            clientName: null,
-            email: null,
-            phone: null,
-            appointmentDateTime: null,
-            query: null
-          };
-        }
-
-        showSources(data.retrievedDocuments || []);
-        // Show save indicator only for technical queries
-        if(data.saved) {
-          const saveIndicator = document.createElement('div');
-          saveIndicator.style.fontSize = '11px';
-          saveIndicator.style.color = '#10b981';
-          saveIndicator.style.marginTop = '4px';
-          saveIndicator.textContent = '✓ Technical query saved to database';
-          if(lastAssistant) lastAssistant.appendChild(saveIndicator);
-        }
-      }catch(err){
-        if(lastAssistant) lastAssistant.textContent = err.message || 'Error';
-      }finally{ sendBtn.disabled = false }
-    }
+      try {
+        const resp = await fetch('/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Registration failed');
+        saveSessionUser(data.user);
+      } catch (error) {
+        messageEl.textContent = error.message;
+        messageEl.className = 'error';
+        messageEl.hidden = false;
+      }
+    });
   </script>
 </body>
 </html>

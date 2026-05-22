@@ -118,10 +118,26 @@ const evaluateLlmDecision = (rawResponse, message) => {
       reason: "Could not parse JSON from LLM response.",
       response: rawResponse,
       appointmentResult: null,
+      details: null,
     };
   }
 
-  // ... existing code ...
+  // Parse natural language dates in the LLM response details
+  let appointmentResult = null;
+  if (decision.details) {
+    if (decision.details.appointmentDateTime) {
+      const rawDate = decision.details.appointmentDateTime;
+      const parsedDate = chrono.parseDate(rawDate);
+      if (parsedDate) {
+        console.log(`Parsed natural language date "${rawDate}" to "${parsedDate.toISOString()}"`);
+        decision.details.appointmentDateTime = parsedDate.toISOString();
+      }
+    }
+
+    if (decision.appointment) {
+      appointmentResult = scheduleLocalAppointment(decision.details);
+    }
+  }
 
   return {
     appointment: Boolean(decision.appointment),
@@ -177,6 +193,25 @@ const startAgenticAI = async () => {
   chatCollection = db.collection(mongoChatCollection);
   appointmentsCollection = db.collection(mongoAppointmentsCollection);
   usersCollection = db.collection(mongoUsersCollection);
+
+  // 1. Fix the distorted name for your user
+  try {
+    await usersCollection.updateOne(
+      { _id: new ObjectId("67b32ee0b140e86775c6e2cf") },
+      { $set: { name: "Surajit" } }
+    );
+  } catch (e) {
+    console.warn("Migration: Could not update specific user name");
+  }
+
+  // 2. Map all unassigned data to your user ID
+  const targetUserId = "67b32ee0b140e86775c6e2cf";
+  const migrationFilter = { $or: [{ userId: { $exists: false } }, { userId: null }, { userId: "1" }] };
+
+  await documentsCollection.updateMany(migrationFilter, { $set: { userId: targetUserId } });
+  await appointmentsCollection.updateMany(migrationFilter, { $set: { userId: targetUserId } });
+  await chatCollection.updateMany(migrationFilter, { $set: { userId: targetUserId } });
+
   await documentsCollection.createIndex({
     title: "text",
     source: "text",
@@ -184,10 +219,6 @@ const startAgenticAI = async () => {
   });
   await documentsCollection.createIndex({ uploadedAt: 1 });
   await documentsCollection.createIndex({ userId: 1 });
-  await documentsCollection.updateMany(
-    { $or: [{ userId: { $exists: false } }, { userId: null }] },
-    { $set: { userId: "1" } },
-  );
   await usersCollection.createIndex({ email: 1 }, { unique: true });
   await chatCollection.createIndex({ message: "text", response: "text" });
   await chatCollection.createIndex({ createdAt: 1 });
@@ -203,9 +234,7 @@ const startAgenticAI = async () => {
   });
 };
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "login.html"));
-});
+
 
 app.post("/register", async (req, res) => {
   const { name, email, password } = req.body;
@@ -243,6 +272,14 @@ app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: "email and password are required" });
+  }
+
+  // Admin Hardcoded Login (for this example)
+  if (email === "admin@agentic.ai" && password === "Admin@123") {
+    return res.json({
+      success: true,
+      user: { id: "admin", name: "System Admin", email: "admin@agentic.ai", role: "admin" }
+    });
   }
 
   try {
@@ -578,6 +615,50 @@ app.get("/chats", async (req, res) => {
   } catch (error) {
     console.error("Fetch chats error:", error);
     return res.status(500).json({ error: "Failed to fetch chat history." });
+  }
+});
+
+// Admin Routes
+app.get("/admin/users", async (req, res) => {
+  const { adminId } = req.query;
+  if (adminId !== "admin") return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    const users = await usersCollection.find({}).sort({ createdAt: -1 }).toArray();
+    return res.json({
+      users: users.map(u => ({ id: u._id.toString(), name: u.name, email: u.email, createdAt: u.createdAt }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch users" });
+  }
+});
+
+app.put("/admin/users/:id", async (req, res) => {
+  const { id } = req.params;
+  const { name, email, password, adminId } = req.body;
+  if (adminId !== "admin") return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    const updateData = { name, email };
+    if (password) updateData.passwordHash = hashPassword(password);
+
+    await usersCollection.updateOne({ _id: new ObjectId(id) }, { $set: updateData });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Update failed" });
+  }
+});
+
+app.delete("/admin/users/:id", async (req, res) => {
+  const { id } = req.params;
+  const { adminId } = req.query;
+  if (adminId !== "admin") return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    await usersCollection.deleteOne({ _id: new ObjectId(id) });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Delete failed" });
   }
 });
 
