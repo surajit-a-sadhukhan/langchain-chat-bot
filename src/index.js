@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { MongoClient, ObjectId } from "mongodb";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import * as chrono from "chrono-node";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ const mongoCollection = process.env.MONGODB_COLLECTION || "documents";
 const mongoChatCollection = process.env.MONGODB_CHAT_COLLECTION || "chats";
 const mongoAppointmentsCollection =
   process.env.MONGODB_APPOINTMENTS_COLLECTION || "appointments";
+const mongoUsersCollection = process.env.MONGODB_USERS_COLLECTION || "users";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,6 +56,19 @@ const parseLlmJsonResponse = (text) => {
     }
     throw new Error("Unable to parse JSON from LLM response.");
   }
+};
+
+const hashPassword = (password, salt = crypto.randomBytes(16).toString("hex")) => {
+  const derivedKey = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${derivedKey}`;
+};
+
+const verifyPassword = (password, storedHash) => {
+  if (!storedHash || typeof storedHash !== "string") return false;
+  const [salt, derived] = storedHash.split(":");
+  if (!salt || !derived) return false;
+  const computed = crypto.scryptSync(password, salt, 64).toString("hex");
+  return crypto.timingSafeEqual(Buffer.from(computed, "hex"), Buffer.from(derived, "hex"));
 };
 
 const scheduleLocalAppointment = (details) => {
@@ -145,6 +160,7 @@ const geminiModel = buildGeminiModel();
 let documentsCollection;
 let chatCollection;
 let appointmentsCollection;
+let usersCollection;
 
 const startAgenticAI = async () => {
   if (!geminiKey) {
@@ -160,6 +176,7 @@ const startAgenticAI = async () => {
   documentsCollection = db.collection(mongoCollection);
   chatCollection = db.collection(mongoChatCollection);
   appointmentsCollection = db.collection(mongoAppointmentsCollection);
+  usersCollection = db.collection(mongoUsersCollection);
   await documentsCollection.createIndex({
     title: "text",
     source: "text",
@@ -169,8 +186,9 @@ const startAgenticAI = async () => {
   await documentsCollection.createIndex({ userId: 1 });
   await documentsCollection.updateMany(
     { $or: [{ userId: { $exists: false } }, { userId: null }] },
-    { $set: { userId: 1 } },
+    { $set: { userId: "1" } },
   );
+  await usersCollection.createIndex({ email: 1 }, { unique: true });
   await chatCollection.createIndex({ message: "text", response: "text" });
   await chatCollection.createIndex({ createdAt: 1 });
   await appointmentsCollection.createIndex({
@@ -189,9 +207,70 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
+app.post("/register", async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: "name, email, and password are required" });
+  }
+
+  try {
+    const existing = await usersCollection.findOne({ email });
+    if (existing) {
+      return res.status(409).json({ error: "A user with that email already exists." });
+    }
+
+    const passwordHash = hashPassword(password);
+    const result = await usersCollection.insertOne({
+      name,
+      email,
+      passwordHash,
+      createdAt: new Date().toISOString(),
+    });
+
+    const user = {
+      id: result.insertedId.toString(),
+      name,
+      email,
+    };
+    return res.json({ success: true, user });
+  } catch (error) {
+    console.error("Register error:", error);
+    return res.status(500).json({ error: "Failed to register user." });
+  }
+});
+
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: "email and password are required" });
+  }
+
+  try {
+    const user = await usersCollection.findOne({ email });
+    if (!user || !verifyPassword(password, user.passwordHash)) {
+      return res.status(401).json({ error: "Invalid email or password." });
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    return res.status(500).json({ error: "Failed to login user." });
+  }
+});
+
 app.get("/documents", async (req, res) => {
   try {
-    const userId = Number(req.query.userId) || 1;
+    const userId = req.query.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Missing userId" });
+    }
     const docs = await documentsCollection
       .find({ userId }, { projection: { title: 1, source: 1, text: 1, uploadedAt: 1 } })
       .sort({ uploadedAt: -1 })
@@ -213,8 +292,8 @@ app.get("/documents", async (req, res) => {
 
 app.post("/upload", async (req, res) => {
   const { title, source, text, userId } = req.body;
-  if (!title || !text) {
-    return res.status(400).json({ error: "title and text are required" });
+  if (!title || !text || !userId) {
+    return res.status(400).json({ error: "title, text, and userId are required" });
   }
 
   try {
@@ -224,7 +303,7 @@ app.post("/upload", async (req, res) => {
       text,
       uploadedAt: new Date().toISOString(),
       provider: "google",
-      userId: Number(userId) || 1,
+      userId,
     };
     const result = await documentsCollection.insertOne(document);
     return res.json({
@@ -239,9 +318,13 @@ app.post("/upload", async (req, res) => {
 
 app.get("/appointments", async (req, res) => {
   try {
+    const userId = req.query.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Missing userId" });
+    }
     const appointments = await appointmentsCollection
       .find(
-        {},
+        { userId },
         {
           projection: {
             clientName: 1,
@@ -333,7 +416,10 @@ app.post("/chat", async (req, res) => {
   }
 
   try {
-    const currentUserId = Number(userId) || 1;
+    const currentUserId = userId;
+    if (!currentUserId) {
+      return res.status(401).json({ error: "Missing userId" });
+    }
     const relevantDocs = await getNearestDocuments(message, currentUserId, 3);
     console.log("Relevant documents found:", relevantDocs);
     const context = relevantDocs
@@ -461,9 +547,13 @@ Respond only in valid JSON with these keys:
 
 app.get("/chats", async (req, res) => {
   try {
+    const userId = req.query.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Missing userId" });
+    }
     const chats = await chatCollection
       .find(
-        {},
+        { userId },
         {
           projection: {
             message: 1,

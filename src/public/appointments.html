@@ -429,7 +429,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chrono-node@2.3.8/dist/bundle.min.js"></script>
   <script>
-    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
     if (!currentUser) {
       window.location.href = '/';
     }
@@ -439,7 +439,7 @@
     const logoutBtn = document.getElementById('logoutBtn');
     userBadge.textContent = `Logged in as ${currentUser.name} (${currentUser.email})`;
     logoutBtn.addEventListener('click', () => {
-      localStorage.removeItem('currentUser');
+      sessionStorage.removeItem('currentUser');
       window.location.href = '/';
     });
 
@@ -448,7 +448,7 @@
     const fetchAppointments = async () => {
       listArea.innerHTML = '<div class="empty-state">Loading appointments…</div>';
       try {
-        const resp = await fetch('/appointments');
+        const resp = await fetch(`/appointments?userId=${encodeURIComponent(currentUser.id)}`);
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || 'Failed to load appointments');
         renderAppointments(data.appointments);

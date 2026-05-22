@@ -60,7 +60,7 @@
   </div>
 
   <script>
-    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    const currentUser = JSON.parse(sessionStorage.getItem('currentUser') || 'null');
     if (!currentUser) {
       window.location.href = '/';
     }
@@ -77,7 +77,7 @@
 
     userBadge.textContent = `Logged in as ${currentUser.name} (${currentUser.email})`;
     logoutBtn.addEventListener('click', () => {
-      localStorage.removeItem('currentUser');
+      sessionStorage.removeItem('currentUser');
       window.location.href = '/';
     });
 
