@@ -730,7 +730,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "An internal server error occurred." });
 });
 
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 3000;
 
 startAgenticAI().catch((error) => {
   console.error("Failed to start Agentic AI:", error);
