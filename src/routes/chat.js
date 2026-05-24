@@ -38,7 +38,7 @@ Current collected details so far:
 1. "appointment": For scheduling a meeting.
 2. "query_ticket": For when a user reports a problem or asks a complex query that needs support tracking.
 
-Today's Date: ${new Date().toDateString()}
+Today\'s Date: ${new Date().toDateString()}
 
 TO SCHEDULE AN APPOINTMENT (appointment: true):
 You MUST gather: Client Name (clientName), Email (email), Phone (phone), and Date/Time (appointmentDateTime).
@@ -148,11 +148,6 @@ Respond ONLY in valid JSON:
       details: decision.details || null,
       reason: decision.reason,
     });
-  } catch (error) {
-    console.error("Chat error:", error);
-    return res.status(500).json({ error: "Failed to generate a response." });
-  }
-});
   } catch (error) {
     console.error("Chat error:", error);
     return res.status(500).json({ error: "Failed to generate a response." });
