@@ -6,6 +6,7 @@ import { MongoClient, ObjectId } from "mongodb";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import * as chrono from "chrono-node";
 import crypto from "crypto";
+import { ChatOpenRouter } from "@langchain/openrouter";
 
 dotenv.config();
 
@@ -18,6 +19,9 @@ const mongoChatCollection = process.env.MONGODB_CHAT_COLLECTION || "chats";
 const mongoAppointmentsCollection =
   process.env.MONGODB_APPOINTMENTS_COLLECTION || "appointments";
 const mongoUsersCollection = process.env.MONGODB_USERS_COLLECTION || "users";
+
+const langchainmodel = process.env.OPENROUTER_MODEL || "gemini-2.5-flash";
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,12 +37,8 @@ const buildGeminiModel = () =>
     model: geminiModelName,
     temperature: 0.7,
   });
-try{
 const invokeLLM = async (prompt) => await geminiModel.invoke(prompt);
-}catch(e){
-  console.error("Error initializing Gemini model:", e);
-  process.exit(1);
-} 
+
 const parseLlmJsonResponse = (text) => {
   console.log("Parsing LLM response for JSON:", text);
   if (!text || typeof text !== "string") {
@@ -508,11 +508,11 @@ Respond only in valid JSON with these keys:
     const formattedHistory =
       Array.isArray(history) && history.length > 0
         ? history
-            .map(
-              (h) =>
-                `${h.role === "user" ? "User" : "Assistant"}: ${h.content}`,
-            )
-            .join("\n")
+          .map(
+            (h) =>
+              `${h.role === "user" ? "User" : "Assistant"}: ${h.content}`,
+          )
+          .join("\n")
         : "";
 
     const prompt = relevantDocs.length
@@ -526,7 +526,22 @@ Respond only in valid JSON with these keys:
       (typeof response?.content === "string" ? response.content : response);
 
     const decision = evaluateLlmDecision(rawResponse, message);
-
+    try {
+      const openRouterModel = new ChatOpenRouter(
+        langchainmodel,
+        { temperature: 0.8 }
+      );
+      console.log("prompt -->", prompt)
+      const resp = await openRouterModel.invoke(prompt);
+      console.log("----------------------------------------------------");
+      console.log("Raw OpenRouter response:", resp?.content);
+      const parseItm = parseLlmJsonResponse(resp?.content);
+      console.log("----------------------------------------------------");
+      console.log("Parsed OpenRouter JSON response:", parseItm);
+    }
+    catch (e) {
+      console.error("Error invoking OpenRouter model:", e);
+    }
     const chatDoc = {
       message,
       response: decision.response,
