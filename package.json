@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "description": "A simple Node.js chatbot using LangChain and Google Gemini.",
   "type": "module",
-  "main": "src/index.js",
+  "main": "src/app.js",
   "scripts": {
-    "start": "node src/index.js",
-    "start:dev": "nodemon src/index.js"
+    "start": "node src/app.js",
+    "start:dev": "nodemon src/app.js"
   },
   "dependencies": {
     "@langchain/google-genai": "^2.1.31",
