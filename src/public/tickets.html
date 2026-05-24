@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tickets — LangChain</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>Support Tickets</h1>
+      <nav class="toolbar">
+        <a href="/chat.html">AI Chat</a>
+        <a href="/documents.html">Documents</a>
+        <a href="/appointments.html">Appointments</a>
+        <a href="/tickets.html">Tickets</a>
+      </nav>
+      <div class="user-nav">
+        <span id="userBadge"></span>
+        <button id="logoutBtn" class="btn-logout">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="card">
+      <div style="padding: 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin:0">My Tickets</h2>
+        <button id="refreshBtn" class="button-primary btn-small">Refresh List</button>
+      </div>
+      <div id="listArea">
+        <div class="empty-state">Loading tickets…</div>
+      </div>
+    </div>
+  </main>
+
+  <div id="editModal" class="modal-overlay" hidden>
+    <div class="modal">
+      <h3>Edit Ticket</h3>
+      <input type="hidden" id="editTicketId" />
+      <label>Subject</label>
+      <input type="text" id="editSubject" />
+      <label>Description</label>
+      <textarea id="editDescription" style="width:100%; border-radius:8px; padding:10px; border:1px solid var(--border);"></textarea>
+      <label id="statusLabel" hidden>Status</label>
+      <select id="editStatus" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);" hidden>
+        <option value="open">Open</option>
+        <option value="in-progress">In Progress</option>
+        <option value="closed">Closed</option>
+      </select>
+      <div class="modal-btns">
+        <button onclick="saveTicket()" class="button-primary" style="flex:1">Save Changes</button>
+        <button onclick="closeModal()" class="btn-logout" style="flex:1; color: var(--text); border-color: var(--border)">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/script.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const listArea = document.getElementById('listArea');
+      const refreshBtn = document.getElementById('refreshBtn');
+      const isAdmin = currentUser?.email === 'admin@agentic.ai';
+
+      const fetchTickets = async () => {
+        try {
+          const resp = await fetch(`/tickets?userId=${currentUser.id}&role=${isAdmin ? 'admin' : 'user'}`);
+          const data = await resp.json();
+          renderTickets(data.tickets);
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      };
+
+      const renderTickets = (tickets) => {
+        if (!tickets.length) {
+          listArea.innerHTML = '<div class="empty-state">No tickets found.</div>';
+          return;
+        }
+
+        let html = `
+          <table class="user-table">
+            <thead>
+              <tr>
+                <th>Ticket No</th>
+                <th>Subject</th>
+                <th>Status</th>
+                <th>Created</th>
+                ${isAdmin ? '<th>User</th>' : ''}
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+
+        tickets.forEach(t => {
+          html += `
+            <tr>
+              <td><strong>${t.ticketNo}</strong></td>
+              <td>${escapeHtml(t.subject)}</td>
+              <td><span class="status-pill">${t.status}</span></td>
+              <td>${new Date(t.createdAt).toLocaleDateString()}</td>
+              ${isAdmin ? `<td>${escapeHtml(t.userName)}</td>` : ''}
+              <td class="actions">
+                <button class="button-primary btn-small" onclick="openEditTicket('${t.id}', '${escapeHtml(t.subject)}', '${escapeHtml(t.description)}', '${t.status}')">Edit</button>
+                <button class="btn-logout btn-small" style="color: var(--error); border-color: var(--error)" onclick="deleteTicket('${t.id}')">Delete</button>
+              </td>
+            </tr>
+          `;
+        });
+
+        html += '</tbody></table>';
+        listArea.innerHTML = html;
+      };
+
+      window.openEditTicket = (id, subject, description, status) => {
+        document.getElementById('editTicketId').value = id;
+        document.getElementById('editSubject').value = subject;
+        document.getElementById('editDescription').value = description;
+        document.getElementById('editStatus').value = status;
+        
+        if (isAdmin) {
+          document.getElementById('statusLabel').hidden = false;
+          document.getElementById('editStatus').hidden = false;
+        }
+
+        document.getElementById('editModal').hidden = false;
+      };
+
+      window.closeModal = () => document.getElementById('editModal').hidden = true;
+
+      window.saveTicket = async () => {
+        const id = document.getElementById('editTicketId').value;
+        const subject = document.getElementById('editSubject').value;
+        const description = document.getElementById('editDescription').value;
+        const status = document.getElementById('editStatus').value;
+
+        try {
+          const resp = await fetch(`/tickets/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subject, description, status })
+          });
+          if (!resp.ok) throw new Error('Update failed');
+          showToast('Ticket updated');
+          closeModal();
+          fetchTickets();
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      };
+
+      window.deleteTicket = async (id) => {
+        if (!confirm('Delete this ticket?')) return;
+        try {
+          await fetch(`/tickets/${id}`, { method: 'DELETE' });
+          showToast('Ticket deleted');
+          fetchTickets();
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      };
+
+      refreshBtn.addEventListener('click', fetchTickets);
+      fetchTickets();
+    });
+  </script>
+</body>
+</html>

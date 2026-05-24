@@ -9,6 +9,7 @@ import documentRoutes from './routes/documents.js';
 import appointmentRoutes from './routes/appointments.js';
 import chatRoutes from './routes/chat.js';
 import adminRoutes from './routes/admin.js';
+import ticketRoutes from './routes/tickets.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +24,7 @@ app.use(documentRoutes);
 app.use(appointmentRoutes);
 app.use(chatRoutes);
 app.use(adminRoutes);
+app.use(ticketRoutes);
 
 initializeDatabase().then(() => {
   app.listen(port, () => {

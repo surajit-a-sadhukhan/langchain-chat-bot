@@ -1,12 +1,12 @@
 import express from "express";
-import { chatCollection, appointmentsCollection } from "../db.js";
+import { chatCollection, appointmentsCollection, ticketsCollection } from "../db.js";
 import { geminiModelName } from "../config.js";
 import { invokeLLM, evaluateLlmDecision, getNearestDocuments } from "../utils.js";
 
 const router = express.Router();
 
 router.post("/chat", async (req, res) => {
-  const { message, history, appointmentDetails, userId } = req.body;
+  const { message, history, appointmentDetails, userId, userName, userEmail } = req.body;
   if (!message) {
     return res.status(400).json({ error: "Message is required." });
   }
@@ -34,7 +34,33 @@ Current collected details so far:
 - Topic / Reason: ${appointmentDetails?.query || "not provided"}
 `;
 
-    const systemInstruction = `You are a helpful assistant that receives a user question and decides whether it should trigger a local appointment action.\n\nToday\\\\\\\\\\\\\\\"s Date: ${new Date().toDateString()}\n\nTo schedule an appointment, you MUST gather all the following important details:\n- Client Name (clientName)\n- Email Address (email)\n- Contact / Phone Number (phone)\n- Preferred Appointment Date & Time (appointmentDateTime) - parse this into a valid ISO 8601 string or readable date-time string if possible.\n\nOptional detail:\n- Topic / Reason for appointment (query) - collect this if the user volunteers it, but do not block scheduling if it is missing.\n\nRules for scheduling an appointment:\n- Review the \"Current collected details so far\" section below.\n- Analyze the user\\\\\\\\\\\\\\\\\\\\\\\"s new message and the conversation history to update these details.\n- Always output the full updated state of all collected details (both previously collected and newly identified) in the \"details\" object in your JSON response. Do not lose any details that were already collected.\n- If any of the important details (Name, Email, Phone/Contact, and Date/Time) are missing, you MUST NOT trigger the appointment. Set \"appointment\" to false, and in the \"response\", politely ask the user for the missing details.\n- Once (and only when) ALL the important details (Name, Email, Phone/Contact, and Date/Time) are gathered, set \"appointment\" to true and populate the \"details\" object with the complete collected values. Set a friendly confirmation message in \"response\".\n\nRespond only in valid JSON with these keys:\n- appointment: true or false\n- reason: a short explanation of your decision\n- response: a natural-language answer to the user (e.g. answering a question, asking for missing appointment details, or confirming the scheduled appointment)\n- details: object with keys: clientName, email, phone, appointmentDateTime, query. Ensure you include all details collected so far.\n`;
+    const systemInstruction = `You are a helpful assistant that receives a user question and decides whether it should trigger a local action:
+1. "appointment": For scheduling a meeting.
+2. "query_ticket": For when a user reports a problem or asks a complex query that needs support tracking.
+
+Today's Date: ${new Date().toDateString()}
+
+TO SCHEDULE AN APPOINTMENT (appointment: true):
+You MUST gather: Client Name (clientName), Email (email), Phone (phone), and Date/Time (appointmentDateTime).
+
+TO CREATE A SUPPORT TICKET (query_ticket: true):
+If the user is reporting a bug, technical issue, or problem that requires investigation, set query_ticket to true.
+You MUST gather:
+- subject: a short summary of the issue
+- description: a detailed explanation of the problem
+
+Rules:
+- Review "Current collected details so far".
+- If important details for either action are missing, set the action to false and ask for missing info.
+- Once ALL details for a ticket are present, set query_ticket to true.
+
+Respond ONLY in valid JSON:
+- appointment: true/false
+- query_ticket: true/false
+- reason: short explanation
+- response: natural-language response
+- details: object with keys: clientName, email, phone, appointmentDateTime, query, subject, description.
+`;
 
     const formattedHistory =
       Array.isArray(history) && history.length > 0
@@ -49,31 +75,12 @@ Current collected details so far:
     const prompt = relevantDocs.length
       ? `${systemInstruction}\n\nContext:\n${context}\n\n${detailsState}\n\n${formattedHistory ? `Conversation History:\n${formattedHistory}\n\n` : ""}Question: ${message}`
       : `${systemInstruction}\n\n${detailsState}\n\n${formattedHistory ? `Conversation History:\n${formattedHistory}\n\n` : ""}Question: ${message}`;
-    console.log("Constructed prompt for LLM:", prompt);
+    
     const resp = await invokeLLM(prompt);
-    const response = resp?.content;
-    console.log("LLM raw response:", response);
-    const rawResponse =
-      response?.text ??
-      (typeof response?.content === "string" ? response.content : response);
+    const rawResponse = resp?.content;
 
     const decision = evaluateLlmDecision(rawResponse, message);
-    // try {
-    //   const openRouterModel = new ChatOpenRouter(
-    //     langchainmodel,
-    //     { temperature: 0.8 }
-    //   );
-    //   console.log("prompt -->", prompt)
-    //   const resp = await openRouterModel.invoke(prompt);
-    //   console.log("----------------------------------------------------");
-    //   console.log("Raw OpenRouter response:", resp?.content);
-    //   const parseItm = parseLlmJsonResponse(resp?.content);
-    //   console.log("----------------------------------------------------");
-    //   console.log("Parsed OpenRouter JSON response:", parseItm);
-    // }
-    // catch (e) {
-    //   console.error("Error invoking OpenRouter model:", e);
-    // }
+
     const chatDoc = {
       message,
       response: decision.response,
@@ -86,7 +93,7 @@ Current collected details so far:
       provider: "google",
       model: geminiModelName,
       appointment: decision.appointment,
-      appointmentResult: decision.appointmentResult,
+      query_ticket: decision.query_ticket,
       llmReason: decision.reason,
       userId: currentUserId,
     };
@@ -108,24 +115,44 @@ Current collected details so far:
         llmReason: decision.reason,
         userId: currentUserId,
       };
-      const appointmentResult =
-        await appointmentsCollection.insertOne(appointmentDoc);
-      savedAppointment = {
-        ...appointmentDoc,
-        id: appointmentResult.insertedId.toString(),
+      const appointmentResult = await appointmentsCollection.insertOne(appointmentDoc);
+      savedAppointment = { ...appointmentDoc, id: appointmentResult.insertedId.toString() };
+    }
+
+    let savedTicket = null;
+    if (decision.query_ticket && ticketsCollection) {
+      const ticketNo = `TIC-${Date.now()}`;
+      const ticketDoc = {
+        ticketNo,
+        userId: currentUserId,
+        userName: userName || "User",
+        userEmail: userEmail || "",
+        subject: decision.details?.subject || "Support Query",
+        description: decision.details?.description || message,
+        status: "open",
+        createdAt: new Date().toISOString(),
+        llmReason: decision.reason
       };
-      console.log("Appointment saved to database:", savedAppointment);
+      const result = await ticketsCollection.insertOne(ticketDoc);
+      savedTicket = { ...ticketDoc, id: result.insertedId.toString() };
+      decision.response = `I have created a support ticket for you. Ticket Number: ${ticketNo}. ${decision.response}`;
     }
 
     return res.json({
       response: decision.response,
       retrievedDocuments: chatDoc.retrievedDocuments,
       appointment: decision.appointment,
-      appointmentResult: decision.appointmentResult,
+      query_ticket: decision.query_ticket,
       savedAppointment,
+      savedTicket,
       details: decision.details || null,
       reason: decision.reason,
     });
+  } catch (error) {
+    console.error("Chat error:", error);
+    return res.status(500).json({ error: "Failed to generate a response." });
+  }
+});
   } catch (error) {
     console.error("Chat error:", error);
     return res.status(500).json({ error: "Failed to generate a response." });

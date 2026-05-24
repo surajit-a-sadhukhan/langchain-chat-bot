@@ -124,10 +124,15 @@ export const evaluateLlmDecision = (rawResponse, message) => {
     if (decision.appointment) {
       appointmentResult = scheduleLocalAppointment(decision.details);
     }
+
+    if (decision.query_ticket) {
+      // Local check to see if we need to return a function or handle ticket
+    }
   }
 
   return {
     appointment: Boolean(decision.appointment),
+    query_ticket: Boolean(decision.query_ticket),
     reason: typeof decision.reason === "string" ? decision.reason : "",
     response:
       typeof decision.response === "string" ? decision.response : rawResponse,

@@ -22,6 +22,7 @@
         <a href="/chat.html">AI Chat</a>
         <a href="/documents.html">Documents</a>
         <a href="/appointments.html">Appointments</a>
+        <a href="/tickets.html">Tickets</a>
       </nav>
       <div class="user-nav">
         <span id="userBadge"></span>
@@ -42,7 +43,7 @@
         <label>Title <input id="title" /></label>
         <label>Source <input id="source" placeholder="manual"/></label>
         <label>Text <textarea id="text" rows="8"></textarea></label>
-        <label>File <input id="file" type="file" accept=".txt"/></label>
+        <label>File <input id="file" type="file" accept=".txt,.pdf,.doc,.docx,.png,.jpg,.jpeg"/></label>
         <div style="display:flex;gap:8px;margin-top:10px">
           <button id="upload" class="button-primary">Upload</button>
           <button id="refresh" class="small">Refresh</button>
@@ -53,6 +54,9 @@
   </div>
 
   <script src="/script.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.5.1/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
   <script>
     const listEl = document.getElementById('list');
     const titleEl = document.getElementById('title');
@@ -62,6 +66,9 @@
     const statusEl = document.getElementById('status');
     const uploadBtn = document.getElementById('upload');
     const refreshBtn = document.getElementById('refresh');
+
+    // Initialize PDF.js worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.worker.min.js';
 
     async function loadDocs(){
       listEl.innerHTML = 'Loading...';
@@ -79,9 +86,60 @@
       }catch(err){ listEl.innerHTML = 'Failed to load documents.' }
     }
 
-    async function readFile(f){ if(!f) return ''; return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.toString()); r.onerror=()=>rej(r.error); r.readAsText(f,'UTF-8'); }) }
+    async function extractTextFromFile(file) {
+      const extension = file.name.split('.').pop().toLowerCase();
+      statusEl.textContent = `Processing ${extension.toUpperCase()} file...`;
 
-    fileEl.addEventListener('change', async ()=>{ const f=fileEl.files?.[0]; if(!f) return; statusEl.textContent='Reading file...'; try{ textEl.value = await readFile(f); statusEl.textContent=`Loaded ${f.name}` }catch(e){ statusEl.textContent='Failed to read file.' } });
+      if (extension === 'txt') {
+        return new Promise((res, rej) => {
+          const reader = new FileReader();
+          reader.onload = () => res(reader.result);
+          reader.onerror = rej;
+          reader.readAsText(file);
+        });
+      }
+
+      if (extension === 'pdf') {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let text = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          text += content.items.map(item => item.str).join(' ') + '\n';
+        }
+        return text;
+      }
+
+      if (extension === 'docx' || extension === 'doc') {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        return result.value;
+      }
+
+      if (['png', 'jpg', 'jpeg'].includes(extension)) {
+        statusEl.textContent = 'Running OCR on image (this may take a moment)...';
+        const result = await Tesseract.recognize(file, 'eng');
+        return result.data.text;
+      }
+
+      throw new Error('Unsupported file type');
+    }
+
+    fileEl.addEventListener('change', async () => {
+      const file = fileEl.files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await extractTextFromFile(file);
+        textEl.value = text;
+        if (!titleEl.value) titleEl.value = file.name;
+        statusEl.textContent = `Successfully extracted text from ${file.name}`;
+      } catch (error) {
+        console.error(error);
+        statusEl.textContent = `Error: ${error.message}`;
+      }
+    });
 
     uploadBtn.addEventListener('click', async ()=>{
       const title = titleEl.value.trim(); const source = sourceEl.value.trim()||'manual'; const text = textEl.value.trim();
