@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Documents — LangChain</title>
+  <title>Documents ï¿½ LangChain</title>
   <link rel="stylesheet" href="/style.css" />
   <style>
     :root {
@@ -230,7 +230,7 @@
         <h2>Uploaded documents</h2>
         <p>Recent files and manual entries are shown here. These are the documents the chat experience will use to answer retrieval-based questions.</p>
         <div id="list" class="document-list">
-          <div class="empty-state">Loading your documents…</div>
+          <div class="empty-state">Loading your documentsï¿½</div>
         </div>
       </section>
 
@@ -287,15 +287,24 @@
     const uploadBtn = document.getElementById('upload');
     const refreshBtn = document.getElementById('refresh');
     const userBadge = document.getElementById('userBadge');
+    const navLinks = document.querySelector('.nav-links');
 
-    userBadge.textContent = `${currentUser.name} • ${currentUser.email}`;
+    userBadge.textContent = `${currentUser.name} ï¿½ ${currentUser.email}`;
+
+    const isAdminUser = currentUser?.email === 'admin@agentic.ai' || currentUser?.role === 'admin';
+    if (isAdminUser) {
+      const adminLink = document.createElement('a');
+      adminLink.href = '/admin.html';
+      adminLink.textContent = 'Admin';
+      navLinks.appendChild(adminLink);
+    }
 
     function escapeHtml(value) {
       return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
     }
 
     async function loadDocs() {
-      listEl.innerHTML = '<div class="empty-state">Loading your documents…</div>';
+      listEl.innerHTML = '<div class="empty-state">Loading your documentsï¿½</div>';
 
       try {
         const resp = await fetch(`/documents?userId=${encodeURIComponent(currentUser.id)}`);
@@ -316,7 +325,7 @@
           div.className = 'doc-item';
           div.innerHTML = `
             <strong>${escapeHtml(doc.title)}</strong>
-            <small>${escapeHtml(doc.source)} · ${doc.length} characters · ${new Date(doc.uploadedAt).toLocaleString()}</small>
+            <small>${escapeHtml(doc.source)} ï¿½ ${doc.length} characters ï¿½ ${new Date(doc.uploadedAt).toLocaleString()}</small>
           `;
           listEl.appendChild(div);
         });
@@ -344,7 +353,7 @@
         return;
       }
 
-      statusEl.textContent = `Reading ${file.name}…`;
+      statusEl.textContent = `Reading ${file.name}ï¿½`;
       try {
         textEl.value = await readFile(file);
         statusEl.textContent = `Loaded ${file.name}`;
@@ -364,7 +373,7 @@
       }
 
       uploadBtn.disabled = true;
-      statusEl.textContent = 'Uploading…';
+      statusEl.textContent = 'Uploadingï¿½';
 
       try {
         const resp = await fetch('/upload', {

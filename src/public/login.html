@@ -232,9 +232,14 @@
     loginTab.addEventListener('click', () => showTab('login'));
     registerTab.addEventListener('click', () => showTab('register'));
 
-    const saveSessionUser = (user) => {
+    const ADMIN_CREDENTIALS = {
+      email: 'admin@agentic.ai',
+      password: 'admin',
+    };
+
+    const saveSessionUser = (user, redirectPath = '/chat.html') => {
       sessionStorage.setItem('currentUser', JSON.stringify(user));
-      window.location.href = '/chat.html';
+      window.location.href = redirectPath;
     };
 
     loginForm.addEventListener('submit', async (event) => {
@@ -242,6 +247,19 @@
       messageEl.hidden = true;
       const email = document.getElementById('loginEmail').value.trim();
       const password = document.getElementById('loginPassword').value;
+      const isAdminLogin =
+        (email === 'admin' || email === ADMIN_CREDENTIALS.email) &&
+        password === ADMIN_CREDENTIALS.password;
+
+      if (isAdminLogin) {
+        saveSessionUser({
+          id: 'admin',
+          name: 'Admin',
+          email: ADMIN_CREDENTIALS.email,
+          role: 'admin',
+        }, '/admin.html');
+        return;
+      }
 
       try {
         const resp = await fetch('/login', {

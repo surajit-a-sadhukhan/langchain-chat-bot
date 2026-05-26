@@ -368,8 +368,17 @@
     const sendBtn = document.getElementById('sendBtn');
     const connectionStatus = document.getElementById('connectionStatus');
     const sourceList = document.getElementById('sourceList');
+    const navLinks = document.querySelector('.nav-links');
 
     userBadge.textContent = `${currentUser.name} � ${currentUser.email}`;
+
+    const isAdminUser = currentUser?.email === 'admin@agentic.ai' || currentUser?.role === 'admin';
+    if (isAdminUser) {
+      const adminLink = document.createElement('a');
+      adminLink.href = '/admin.html';
+      adminLink.textContent = 'Admin';
+      navLinks.appendChild(adminLink);
+    }
 
     logoutBtn.addEventListener('click', () => {
       sessionStorage.removeItem('currentUser');
